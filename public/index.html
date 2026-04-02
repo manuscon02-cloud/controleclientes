@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bot de Cobranças - Lista de TV</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --green: #25d366;
+    --green-dark: #1da851;
+    --blue: #1a73e8;
+    --red: #e53935;
+    --orange: #f57c00;
+    --gray: #f5f6fa;
+    --text: #2d3436;
+    --border: #dfe6e9;
+    --shadow: 0 2px 12px rgba(0,0,0,0.08);
+  }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--gray); color: var(--text); }
+  header {
+    background: #fff;
+    padding: 16px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    box-shadow: var(--shadow);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  header h1 { font-size: 1.2rem; font-weight: 700; }
+  header h1 span { color: var(--green); }
+
+  #wa-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: .85rem;
+    font-weight: 600;
+    padding: 6px 14px;
+    border-radius: 20px;
+    background: #f0f0f0;
+    cursor: pointer;
+  }
+  #wa-status.connected { background: #e8f5e9; color: #2e7d32; }
+  #wa-status.loading { background: #fff8e1; color: #f57c00; }
+  #wa-status.qr { background: #e3f2fd; color: var(--blue); }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: currentColor; }
+
+  .container { max-width: 1100px; margin: 0 auto; padding: 24px 16px; }
+
+  /* QR Modal */
+  #qr-modal {
+    display: none;
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,.5);
+    z-index: 200;
+    justify-content: center;
+    align-items: center;
+  }
+  #qr-modal.show { display: flex; }
+  #qr-box {
+    background: #fff;
+    border-radius: 16px;
+    padding: 32px;
+    text-align: center;
+    max-width: 360px;
+    width: 90%;
+  }
+  #qr-box h2 { margin-bottom: 8px; }
+  #qr-box p { color: #636e72; font-size: .9rem; margin-bottom: 20px; }
+  #qr-img { max-width: 240px; border-radius: 8px; border: 1px solid var(--border); }
+  #qr-loading { color: #636e72; font-size: .9rem; padding: 40px 0; }
+  .close-btn { margin-top: 20px; background: none; border: 1px solid var(--border); padding: 8px 20px; border-radius: 8px; cursor: pointer; }
+
+  /* Stats Cards */
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 24px; }
+  .card {
+    background: #fff;
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: var(--shadow);
+  }
+  .card .label { font-size: .78rem; color: #636e72; text-transform: uppercase; letter-spacing: .5px; font-weight: 600; margin-bottom: 8px; }
+  .card .value { font-size: 1.7rem; font-weight: 800; }
+  .card .value.green { color: var(--green-dark); }
+  .card .value.orange { color: var(--orange); }
+  .card .value.red { color: var(--red); }
+
+  /* Form */
+  .form-card { background: #fff; border-radius: 12px; padding: 20px; box-shadow: var(--shadow); margin-bottom: 24px; }
+  .form-card h2 { font-size: 1rem; margin-bottom: 16px; font-weight: 700; }
+  .form-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; }
+  .form-grid input, .form-grid select {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: .9rem;
+    width: 100%;
+    outline: none;
+    transition: border-color .2s;
+  }
+  .form-grid input:focus, .form-grid select:focus { border-color: var(--blue); }
+  .btn-add {
+    background: var(--green);
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    padding: 10px 20px;
+    font-size: .9rem;
+    font-weight: 700;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background .2s;
+  }
+  .btn-add:hover { background: var(--green-dark); }
+
+  /* Table */
+  .table-card { background: #fff; border-radius: 12px; box-shadow: var(--shadow); overflow: hidden; }
+  .table-header { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+  .table-header h2 { font-size: 1rem; font-weight: 700; }
+  .search-box { border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; font-size: .85rem; outline: none; width: 200px; }
+  .search-box:focus { border-color: var(--blue); }
+
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; min-width: 700px; }
+  th { background: #fafafa; font-size: .78rem; color: #636e72; text-transform: uppercase; letter-spacing: .5px; padding: 12px 16px; text-align: left; border-bottom: 1px solid var(--border); }
+  td { padding: 13px 16px; border-bottom: 1px solid #f0f0f0; font-size: .88rem; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: #fafffe; }
+
+  .badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: .75rem;
+    font-weight: 700;
+  }
+  .badge-ok { background: #e8f5e9; color: #2e7d32; }
+  .badge-warn { background: #fff8e1; color: #f57c00; }
+  .badge-danger { background: #fce4ec; color: #c62828; }
+  .badge-overdue { background: #fce4ec; color: #b71c1c; }
+  .badge-inactive { background: #eceff1; color: #546e7a; }
+
+  .actions { display: flex; gap: 6px; flex-wrap: wrap; }
+  .btn-action {
+    padding: 5px 11px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: .78rem;
+    font-weight: 700;
+    transition: opacity .2s;
+  }
+  .btn-action:hover { opacity: .8; }
+  .btn-renew   { background: #e3f2fd; color: #1565c0; }
+  .btn-test    { background: #e8f5e9; color: #2e7d32; }
+  .btn-toggle  { background: #fff8e1; color: #e65100; }
+  .btn-delete  { background: #fce4ec; color: #c62828; }
+
+  /* Toast */
+  #toast {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    background: #323232;
+    color: #fff;
+    padding: 12px 20px;
+    border-radius: 8px;
+    font-size: .88rem;
+    font-weight: 600;
+    transform: translateY(80px);
+    opacity: 0;
+    transition: all .3s;
+    z-index: 300;
+  }
+  #toast.show { transform: translateY(0); opacity: 1; }
+  #toast.success { background: #2e7d32; }
+  #toast.error { background: #c62828; }
+
+  .empty-row td { text-align: center; color: #b2bec3; padding: 40px; }
+
+  @media (max-width: 600px) {
+    .form-grid { grid-template-columns: 1fr 1fr; }
+    .search-box { width: 140px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>📺 Bot de Cobranças <span>WhatsApp</span></h1>
+  <div id="wa-status" class="loading" onclick="showQRModal()">
+    <span class="dot"></span>
+    <span id="wa-text">Conectando...</span>
+  </div>
+</header>
+
+<!-- QR Modal -->
+<div id="qr-modal">
+  <div id="qr-box">
+    <h2>📱 Escanear QR Code</h2>
+    <p>Abra o WhatsApp → Menu → Dispositivos conectados → Conectar dispositivo</p>
+    <div id="qr-loading">Aguardando QR Code...</div>
+    <img id="qr-img" style="display:none" alt="QR Code WhatsApp" />
+    <br>
+    <button class="close-btn" onclick="closeQRModal()">Fechar</button>
+  </div>
+</div>
+
+<!-- Toast -->
+<div id="toast"></div>
+
+<div class="container">
+
+  <!-- Stats -->
+  <div class="stats">
+    <div class="card">
+      <div class="label">Clientes Ativos</div>
+      <div class="value green" id="stat-active">—</div>
+    </div>
+    <div class="card">
+      <div class="label">Receita Mensal</div>
+      <div class="value green" id="stat-revenue">—</div>
+    </div>
+    <div class="card">
+      <div class="label">Vencem em 7 dias</div>
+      <div class="value orange" id="stat-expiring">—</div>
+    </div>
+    <div class="card">
+      <div class="label">Vencidos</div>
+      <div class="value red" id="stat-overdue">—</div>
+    </div>
+  </div>
+
+  <!-- Add Client Form -->
+  <div class="form-card">
+    <h2>➕ Cadastrar Novo Cliente</h2>
+    <div class="form-grid">
+      <input type="text" id="f-name" placeholder="Nome completo" />
+      <input type="text" id="f-phone" placeholder="WhatsApp (55 + DDD + número)" />
+      <input type="text" id="f-plan" placeholder="Plano (ex: Mensal, Trimestral)" />
+      <input type="number" id="f-price" placeholder="Valor R$" step="0.01" min="0" />
+      <input type="date" id="f-date" />
+      <button class="btn-add" onclick="addClient()">Cadastrar Cliente</button>
+    </div>
+  </div>
+
+  <!-- Client Table -->
+  <div class="table-card">
+    <div class="table-header">
+      <h2>👥 Clientes Cadastrados</h2>
+      <input class="search-box" type="text" id="search" placeholder="🔍 Buscar..." oninput="renderTable()" />
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Nome</th>
+            <th>WhatsApp</th>
+            <th>Plano</th>
+            <th>Valor</th>
+            <th>Vencimento</th>
+            <th>Status</th>
+            <th>Ações</th>
+          </tr>
+        </thead>
+        <tbody id="clients-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<script>
+let allClients = [];
+
+// ── Status WhatsApp ──────────────────────────────────────────────────────────
+async function checkStatus() {
+  try {
+    const res = await fetch('/api/status');
+    const data = await res.json();
+    const el = document.getElementById('wa-status');
+    const txt = document.getElementById('wa-text');
+
+    el.className = data.status;
+    if (data.status === 'connected') {
+      txt.textContent = 'Conectado';
+      document.getElementById('qr-img').style.display = 'none';
+    } else if (data.status === 'qr') {
+      txt.textContent = 'Escanear QR';
+      document.getElementById('qr-img').src = data.qr;
+      document.getElementById('qr-img').style.display = 'block';
+      document.getElementById('qr-loading').style.display = 'none';
+    } else {
+      txt.textContent = 'Conectando...';
+    }
+  } catch { /* silencioso */ }
+}
+
+function showQRModal() { document.getElementById('qr-modal').classList.add('show'); }
+function closeQRModal() { document.getElementById('qr-modal').classList.remove('show'); }
+
+// ── Load Data ────────────────────────────────────────────────────────────────
+async function loadData() {
+  const [clientsRes, revenueRes] = await Promise.all([
+    fetch('/api/clients'),
+    fetch('/api/revenue')
+  ]);
+  allClients = await clientsRes.json();
+  const revenue = await revenueRes.json();
+
+  const today = new Date(); today.setHours(0,0,0,0);
+  const in7 = new Date(today); in7.setDate(in7.getDate() + 7);
+
+  const expiring = allClients.filter(c => {
+    if (c.status !== 'active') return false;
+    const d = new Date(c.dueDate + 'T12:00:00');
+    return d >= today && d <= in7;
+  }).length;
+
+  const overdue = allClients.filter(c => {
+    if (c.status !== 'active') return false;
+    const d = new Date(c.dueDate + 'T12:00:00');
+    return d < today;
+  }).length;
+
+  document.getElementById('stat-active').textContent = revenue.activeCount;
+  document.getElementById('stat-revenue').textContent = 'R$ ' + revenue.total.toFixed(2).replace('.', ',');
+  document.getElementById('stat-expiring').textContent = expiring;
+  document.getElementById('stat-overdue').textContent = overdue;
+
+  renderTable();
+}
+
+// ── Table ────────────────────────────────────────────────────────────────────
+function getDaysLeft(dueDate) {
+  const today = new Date(); today.setHours(0,0,0,0);
+  const due = new Date(dueDate + 'T12:00:00'); due.setHours(0,0,0,0);
+  return Math.round((due - today) / 86400000);
+}
+
+function formatDate(d) {
+  const [y,m,day] = d.split('-');
+  return `${day}/${m}/${y}`;
+}
+
+function formatPhone(p) {
+  const n = p.replace(/\D/g,'');
+  if (n.length === 13) return `+${n.slice(0,2)} (${n.slice(2,4)}) ${n.slice(4,9)}-${n.slice(9)}`;
+  if (n.length === 11) return `(${n.slice(0,2)}) ${n.slice(2,7)}-${n.slice(7)}`;
+  return p;
+}
+
+function statusBadge(client) {
+  if (client.status === 'inactive') return '<span class="badge badge-inactive">Inativo</span>';
+  const days = getDaysLeft(client.dueDate);
+  if (days > 7) return `<span class="badge badge-ok">OK (${days}d)</span>`;
+  if (days >= 1) return `<span class="badge badge-warn">Vence em ${days}d</span>`;
+  if (days === 0) return '<span class="badge badge-danger">Vence hoje</span>';
+  return `<span class="badge badge-overdue">Vencido há ${Math.abs(days)}d</span>`;
+}
+
+function renderTable() {
+  const q = document.getElementById('search').value.toLowerCase();
+  const filtered = allClients.filter(c =>
+    c.name.toLowerCase().includes(q) ||
+    c.phone.includes(q) ||
+    (c.plan || '').toLowerCase().includes(q)
+  );
+
+  // Ordenar: vencidos primeiro, depois por dias restantes
+  filtered.sort((a, b) => getDaysLeft(a.dueDate) - getDaysLeft(b.dueDate));
+
+  const tbody = document.getElementById('clients-tbody');
+  if (!filtered.length) {
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="7">Nenhum cliente encontrado</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = filtered.map(c => `
+    <tr>
+      <td><strong>${c.name}</strong></td>
+      <td>${formatPhone(c.phone)}</td>
+      <td>${c.plan || '—'}</td>
+      <td>R$ ${Number(c.price || 0).toFixed(2).replace('.', ',')}</td>
+      <td>${formatDate(c.dueDate)}</td>
+      <td>${statusBadge(c)}</td>
+      <td>
+        <div class="actions">
+          <button class="btn-action btn-renew"  onclick="renewClient('${c.id}')">🔄 Renovar</button>
+          <button class="btn-action btn-test"   onclick="testClient('${c.id}')">📨 Teste</button>
+          <button class="btn-action btn-toggle" onclick="toggleClient('${c.id}', '${c.status}')">${c.status === 'active' ? '⏸ Pausar' : '▶ Ativar'}</button>
+          <button class="btn-action btn-delete" onclick="deleteClient('${c.id}', '${c.name}')">🗑</button>
+        </div>
+      </td>
+    </tr>
+  `).join('');
+}
+
+// ── Actions ──────────────────────────────────────────────────────────────────
+async function addClient() {
+  const name  = document.getElementById('f-name').value.trim();
+  const phone = document.getElementById('f-phone').value.trim();
+  const plan  = document.getElementById('f-plan').value.trim();
+  const price = document.getElementById('f-price').value;
+  const dueDate = document.getElementById('f-date').value;
+
+  if (!name || !phone || !plan || !price || !dueDate) {
+    return toast('Preencha todos os campos!', 'error');
+  }
+
+  try {
+    const res = await fetch('/api/clients', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, phone, plan, price, dueDate })
+    });
+    if (!res.ok) throw new Error((await res.json()).error);
+    ['f-name','f-phone','f-plan','f-price','f-date'].forEach(id => document.getElementById(id).value = '');
+    toast(`✅ ${name} cadastrado com sucesso!`, 'success');
+    loadData();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function renewClient(id) {
+  if (!confirm('Renovar este cliente por mais 1 mês?')) return;
+  try {
+    await fetch(`/api/clients/${id}/renew`, { method: 'POST' });
+    toast('✅ Cliente renovado!', 'success');
+    loadData();
+  } catch { toast('Erro ao renovar', 'error'); }
+}
+
+async function testClient(id) {
+  toast('📨 Enviando mensagem de teste...', '');
+  try {
+    const res = await fetch(`/api/clients/${id}/test`, { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    toast('✅ Mensagem de teste enviada!', 'success');
+  } catch (e) { toast('❌ ' + e.message, 'error'); }
+}
+
+async function toggleClient(id, currentStatus) {
+  const newStatus = currentStatus === 'active' ? 'inactive' : 'active';
+  try {
+    await fetch(`/api/clients/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: newStatus })
+    });
+    toast(newStatus === 'active' ? '▶ Cliente ativado!' : '⏸ Cliente pausado!', 'success');
+    loadData();
+  } catch { toast('Erro ao atualizar status', 'error'); }
+}
+
+async function deleteClient(id, name) {
+  if (!confirm(`Excluir o cliente "${name}"? Esta ação não pode ser desfeita.`)) return;
+  try {
+    await fetch(`/api/clients/${id}`, { method: 'DELETE' });
+    toast(`🗑 ${name} excluído.`, '');
+    loadData();
+  } catch { toast('Erro ao excluir', 'error'); }
+}
+
+// ── Toast ────────────────────────────────────────────────────────────────────
+let toastTimer;
+function toast(msg, type = '') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'show' + (type ? ' ' + type : '');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.className = '', 3500);
+}
+
+// ── Init ─────────────────────────────────────────────────────────────────────
+loadData();
+checkStatus();
+setInterval(checkStatus, 8000);
+setInterval(loadData, 30000);
+
+// Define data mínima como hoje no formulário
+document.getElementById('f-date').min = new Date().toISOString().split('T')[0];
+</script>
+</body>
+</html>
