@@ -1,0 +1,44 @@
+[
+  {
+    "id": "81173bc5-d500-4847-b9a6-230dd808e4a9",
+    "name": "Club",
+    "costPerCredit": 6,
+    "notes": "",
+    "createdAt": "2026-04-04T01:16:12.995398"
+  },
+  {
+    "id": "35c09e00-7983-42c0-98e7-85d56829d9ac",
+    "name": "Five",
+    "costPerCredit": 6,
+    "notes": "",
+    "createdAt": "2026-04-04T01:16:12.995401"
+  },
+  {
+    "id": "43bb6648-3dba-4ac9-b67c-e700e0f43f87",
+    "name": "Unitv",
+    "costPerCredit": 10,
+    "notes": "",
+    "createdAt": "2026-04-04T01:16:12.995403"
+  },
+  {
+    "id": "e10ef107-4288-4c8b-b3fc-da6edf86c90a",
+    "name": "Onix",
+    "costPerCredit": 5,
+    "notes": "",
+    "createdAt": "2026-04-04T01:16:12.995404"
+  },
+  {
+    "id": "c90f8cf9-066a-4ebe-b702-125a9ad8d796",
+    "name": "Five + Unitv",
+    "costPerCredit": 16,
+    "notes": "Five (R$6) + Unitv (R$10) por crédito",
+    "createdAt": "2026-04-04T01:16:12.995406"
+  },
+  {
+    "id": "415383a3-d80b-4036-b007-7b672dd70b2d",
+    "name": "Five + Onix",
+    "costPerCredit": 16,
+    "notes": "Five (R$6) + Onix (R$10) por crédito",
+    "createdAt": "2026-04-04T01:16:12.995408"
+  }
+]
