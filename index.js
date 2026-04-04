@@ -13,8 +13,35 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const DASHBOARD_PASSWORD = process.env.DASHBOARD_PASSWORD || 'admin123';
 const AUTH_PATH = process.env.AUTH_DATA_PATH || '/app/data/.wwebjs_auth';
+const DATA_DIR = '/app/data';
 
 app.use(express.json());
+
+// ─── Importação automática de dados ──────────────────────────────────────────
+// Se existir data/clients.json no código E não existir ainda no volume, copia.
+function importDataIfNeeded() {
+  try {
+    const srcClients = path.join(__dirname, 'data', 'clients.json');
+    const srcServers = path.join(__dirname, 'data', 'servers.json');
+    const dstClients = path.join(DATA_DIR, 'clients.json');
+    const dstServers = path.join(DATA_DIR, 'servers.json');
+
+    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+
+    if (fs.existsSync(srcClients) && !fs.existsSync(dstClients)) {
+      fs.copyFileSync(srcClients, dstClients);
+      console.log('✅ clients.json importado para o volume!');
+    }
+    if (fs.existsSync(srcServers) && !fs.existsSync(dstServers)) {
+      fs.copyFileSync(srcServers, dstServers);
+      console.log('✅ servers.json importado para o volume!');
+    }
+  } catch(e) {
+    console.error('⚠️  Erro na importação de dados:', e.message);
+  }
+}
+
+importDataIfNeeded();
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 const sessions = new Set();
@@ -29,17 +56,6 @@ function authMiddleware(req, res, next) {
 
 app.use(authMiddleware);
 app.use(express.static(path.join(__dirname, 'public')));
-// Importação única de dados
-if (process.env.IMPORT_DATA === 'true') {
-  const clientsData = require('./data/clients.json');
-  const serversData = require('./data/servers.json');
-  const dbPath = '/app/data';
-  if (!require('fs').existsSync(dbPath+'/clients.json')) {
-    require('fs').writeFileSync(dbPath+'/clients.json', JSON.stringify(clientsData, null, 2));
-    require('fs').writeFileSync(dbPath+'/servers.json', JSON.stringify(serversData, null, 2));
-    console.log('✅ Dados importados com sucesso!');
-  }
-}
 
 app.post('/api/login', (req, res) => {
   const { password } = req.body;
@@ -70,7 +86,7 @@ function cleanupChromium() {
       } catch(_) {}
     }
   }
-  deleteLocks('/app/data'); deleteLocks('/tmp');
+  deleteLocks(DATA_DIR); deleteLocks('/tmp');
   console.log('✅ Limpeza concluída.');
 }
 
@@ -185,34 +201,6 @@ app.get('/api/revenue', (req, res) => {
     return s + (sv ? sv.costPerCredit * (c.credits || 1) : 0);
   }, 0);
   res.json({ revenue, totalCost, profit: revenue - totalCost, activeCount: active.length, totalCount: db.getAll().length });
-});
-
-// ─── Debug (remover depois de recuperar dados) ────────────────────────────────
-app.get('/api/debug', (req, res) => {
-  const token = req.headers['x-auth-token'] || req.query.token;
-  if (!token || !sessions.has(token)) return res.status(401).json({ error: 'Não autorizado.' });
-  try {
-    const files = {};
-    const dirs = ['/app/data', './data', '/app/data/.wwebjs_auth'];
-    dirs.forEach(dir => {
-      if (fs.existsSync(dir)) {
-        try { files[dir] = fs.readdirSync(dir); } catch(e) { files[dir] = 'erro: ' + e.message; }
-      } else {
-        files[dir] = 'não existe';
-      }
-    });
-    // Tenta ler clients.json de vários caminhos
-    const paths = ['/app/data/clients.json', './data/clients.json'];
-    const clientsData = {};
-    paths.forEach(p => {
-      if (fs.existsSync(p)) {
-        try { clientsData[p] = JSON.parse(fs.readFileSync(p,'utf8')); } catch(e) { clientsData[p] = 'erro: '+e.message; }
-      } else {
-        clientsData[p] = 'arquivo não encontrado';
-      }
-    });
-    res.json({ dirs: files, clientsFiles: clientsData });
-  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
 // ─── Start ────────────────────────────────────────────────────────────────────
