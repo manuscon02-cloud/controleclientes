@@ -1,7 +1,5 @@
-# Usa Node.js 20 slim como base
 FROM node:20-slim
 
-# Instala Chromium e dependências necessárias para o puppeteer
 RUN apt-get update && apt-get install -y \
     chromium \
     libatk1.0-0 \
@@ -20,7 +18,6 @@ RUN apt-get update && apt-get install -y \
     --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
-# Evita que o puppeteer baixe o Chromium próprio (usa o do sistema)
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 
@@ -31,9 +28,12 @@ RUN npm install --omit=dev
 
 COPY . .
 
-# Railway injeta PORT automaticamente — não fixamos porta aqui
+# Move os arquivos de seed para /app/seeddata ANTES do volume montar
+# O volume monta em /app/data e sobrescreveria os arquivos se ficassem lá
+RUN mkdir -p /app/seeddata && \
+    if [ -f /app/data/clients.json ]; then cp /app/data/clients.json /app/seeddata/clients.json; fi && \
+    if [ -f /app/data/servers.json ]; then cp /app/data/servers.json /app/seeddata/servers.json; fi
+
 EXPOSE 8080
 
 CMD ["node", "index.js"]
-
-
