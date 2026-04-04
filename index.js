@@ -29,6 +29,17 @@ function authMiddleware(req, res, next) {
 
 app.use(authMiddleware);
 app.use(express.static(path.join(__dirname, 'public')));
+// Importação única de dados
+if (process.env.IMPORT_DATA === 'true') {
+  const clientsData = require('./data/clients.json');
+  const serversData = require('./data/servers.json');
+  const dbPath = '/app/data';
+  if (!require('fs').existsSync(dbPath+'/clients.json')) {
+    require('fs').writeFileSync(dbPath+'/clients.json', JSON.stringify(clientsData, null, 2));
+    require('fs').writeFileSync(dbPath+'/servers.json', JSON.stringify(serversData, null, 2));
+    console.log('✅ Dados importados com sucesso!');
+  }
+}
 
 app.post('/api/login', (req, res) => {
   const { password } = req.body;
