@@ -31,7 +31,7 @@ RUN npm install --omit=dev
 
 COPY . .
 
-# Porta padrão (Railway injeta PORT automaticamente)
-EXPOSE 3000
+# Railway injeta PORT automaticamente — não fixamos porta aqui
+EXPOSE 8080
 
 CMD ["node", "index.js"]
