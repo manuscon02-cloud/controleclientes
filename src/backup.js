@@ -1,31 +1,16 @@
-const nodemailer = require('nodemailer');
+const { Resend } = require('resend');
 const fs = require('fs');
 const path = require('path');
 const cron = require('node-cron');
 
 const DATA_DIR = '/app/data';
 
-function createTransporter() {
-  return nodemailer.createTransport({
-    host: 'smtp.gmail.com',
-    port: 465,
-    secure: true,
-    auth: {
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASS
-    },
-    tls: {
-      rejectUnauthorized: false
-    }
-  });
-}
-
 async function sendBackup(manual = false) {
-  const emailUser = process.env.EMAIL_USER;
-  const emailTo   = process.env.EMAIL_TO;
+  const apiKey = process.env.RESEND_API_KEY;
+  const emailTo = process.env.EMAIL_TO;
 
-  if (!emailUser || !emailTo) {
-    console.log('⚠️  EMAIL_USER ou EMAIL_TO não configurados. Backup por email desativado.');
+  if (!apiKey || !emailTo) {
+    console.log('⚠️  RESEND_API_KEY ou EMAIL_TO não configurados.');
     return { success: false, error: 'Email não configurado' };
   }
 
@@ -46,7 +31,7 @@ async function sendBackup(manual = false) {
     const overdueClients = clients.filter(c => c.status === 'active' && c.dueDate < today);
     const totalRevenue = activeClients.reduce((s, c) => s + (c.price || 0), 0);
 
-    const transporter = createTransporter();
+    const resend = new Resend(apiKey);
 
     const subject = manual
       ? `📦 Backup Manual - Bot de Cobranças (${todayStr})`
@@ -56,31 +41,34 @@ async function sendBackup(manual = false) {
       <div style="font-family:sans-serif;max-width:600px;margin:0 auto">
         <h2 style="color:#25d366">📺 Bot de Cobranças — Backup ${manual ? 'Manual' : 'Diário'}</h2>
         <p style="color:#636e72">${todayStr}</p>
-
         <div style="background:#f5f6fa;border-radius:12px;padding:20px;margin:20px 0">
           <h3 style="margin:0 0 12px">📊 Resumo</h3>
           <p>👥 Total de clientes: <strong>${clients.length}</strong></p>
           <p>✅ Ativos: <strong>${activeClients.length}</strong></p>
-          <p>⚠️  Vencidos: <strong>${overdueClients.length}</strong></p>
+          <p>⚠️ Vencidos: <strong>${overdueClients.length}</strong></p>
           <p>💰 Receita mensal: <strong>R$ ${totalRevenue.toFixed(2).replace('.', ',')}</strong></p>
-          <p>🖥️  Servidores: <strong>${servers.length}</strong></p>
+          <p>🖥️ Servidores: <strong>${servers.length}</strong></p>
         </div>
-
         <p style="color:#636e72;font-size:.9rem">
-          Os arquivos <strong>clients.json</strong> e <strong>servers.json</strong> estão anexados neste email.<br>
-          Em caso de perda de dados, entre em contato para restaurar o backup.
+          Os arquivos <strong>clients.json</strong> e <strong>servers.json</strong> estão anexados neste email.
         </p>
       </div>
     `;
 
-    await transporter.sendMail({
-      from: `"Bot de Cobranças" <${emailUser}>`,
+    await resend.emails.send({
+      from: 'Bot de Cobranças <onboarding@resend.dev>',
       to: emailTo,
       subject,
       html,
       attachments: [
-        { filename: `clients_${today}.json`, content: JSON.stringify(clients, null, 2) },
-        { filename: `servers_${today}.json`, content: JSON.stringify(servers, null, 2) }
+        {
+          filename: `clients_${today}.json`,
+          content: Buffer.from(JSON.stringify(clients, null, 2)).toString('base64')
+        },
+        {
+          filename: `servers_${today}.json`,
+          content: Buffer.from(JSON.stringify(servers, null, 2)).toString('base64')
+        }
       ]
     });
 
@@ -94,8 +82,7 @@ async function sendBackup(manual = false) {
 }
 
 function startBackupScheduler() {
-  if (!process.env.EMAIL_USER || !process.env.EMAIL_TO) return;
-  // Todo dia às 23h
+  if (!process.env.RESEND_API_KEY || !process.env.EMAIL_TO) return;
   cron.schedule('0 23 * * *', () => {
     console.log('📦 Iniciando backup diário...');
     sendBackup(false);
