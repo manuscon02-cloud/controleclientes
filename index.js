@@ -100,6 +100,12 @@ const puppeteerArgs = [
   '--disable-gpu','--disable-extensions','--disable-background-networking',
   '--disable-features=site-per-process,TranslateUI','--disable-ipc-flooding-protection'
 ];
+const puppeteerOptions = {
+  executablePath,
+  args: puppeteerArgs,
+  headless: true,
+  protocolTimeout: 120000  // 2 minutos de timeout
+};
 
 const clients = {
   personal: { instance: null, qr: null, ready: false, label: 'Particular' },
@@ -109,7 +115,7 @@ const clients = {
 function createClient(key) {
   const c = new Client({
     authStrategy: new LocalAuth({ clientId: key, dataPath: AUTH_PATH }),
-    puppeteer: { executablePath, args: puppeteerArgs, headless: true }
+    puppeteer: puppeteerOptions
   });
   c.on('qr', async (qr) => { clients[key].qr = await qrcode.toDataURL(qr); clients[key].ready = false; });
   c.on('ready', () => { console.log(`✅ [${key}] conectado!`); clients[key].ready = true; clients[key].qr = null; scheduler.startPartial(clients); });
