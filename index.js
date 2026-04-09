@@ -115,7 +115,11 @@ const clients = {
 function createClient(key) {
   const c = new Client({
     authStrategy: new LocalAuth({ clientId: key, dataPath: AUTH_PATH }),
-    puppeteer: puppeteerOptions
+    puppeteer: puppeteerOptions,
+    webVersionCache: {
+      type: 'remote',
+      remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html'
+    }
   });
   c.on('qr', async (qr) => { clients[key].qr = await qrcode.toDataURL(qr); clients[key].ready = false; });
   c.on('ready', () => { console.log(`✅ [${key}] conectado!`); clients[key].ready = true; clients[key].qr = null; scheduler.startPartial(clients); });
