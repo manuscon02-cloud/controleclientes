@@ -61,12 +61,22 @@ async function runCheck() {
     if (alreadySent) continue;
 
     // Escolhe o cliente WhatsApp correto
-    const senderKey = c.sender || 'personal';
-    const waClient = clientsRef[senderKey];
+    // Se o número preferido não estiver disponível, usa o que estiver conectado
+    let senderKey = c.sender || 'personal';
+    let waClient = clientsRef[senderKey];
 
     if (!waClient || !waClient.ready) {
-      console.warn(`⚠️  WhatsApp [${senderKey}] não disponível para ${c.name}. Pulando.`);
-      continue;
+      // Tenta o outro número como fallback
+      const fallbackKey = senderKey === 'personal' ? 'work' : 'personal';
+      const fallbackClient = clientsRef[fallbackKey];
+      if (fallbackClient && fallbackClient.ready) {
+        console.warn(`⚠️  WhatsApp [${senderKey}] indisponível para ${c.name}. Usando [${fallbackKey}] como fallback.`);
+        senderKey = fallbackKey;
+        waClient = fallbackClient;
+      } else {
+        console.warn(`⚠️  Nenhum WhatsApp disponível para ${c.name}. Pulando.`);
+        continue;
+      }
     }
 
     await sendReminder(waClient.instance, c, daysLeft);
