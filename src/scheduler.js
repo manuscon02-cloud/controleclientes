@@ -60,23 +60,25 @@ async function runCheck() {
     const alreadySent = Array.isArray(c.sentNotifications) && c.sentNotifications.includes(key);
     if (alreadySent) continue;
 
-    // Escolhe o cliente WhatsApp correto
-    // Se o número preferido não estiver disponível, usa o que estiver conectado
-    let senderKey = c.sender || 'personal';
-    let waClient = clientsRef[senderKey];
-
-    if (!waClient || !waClient.ready) {
-      // Tenta o outro número como fallback
-      const fallbackKey = senderKey === 'personal' ? 'work' : 'personal';
-      const fallbackClient = clientsRef[fallbackKey];
-      if (fallbackClient && fallbackClient.ready) {
-        console.warn(`⚠️  WhatsApp [${senderKey}] indisponível para ${c.name}. Usando [${fallbackKey}] como fallback.`);
-        senderKey = fallbackKey;
-        waClient = fallbackClient;
-      } else {
-        console.warn(`⚠️  Nenhum WhatsApp disponível para ${c.name}. Pulando.`);
+    // Proteção contra cobrança indevida após renovação:
+    // Se o cliente foi renovado há menos de 24h e a nova data ainda está
+    // dentro da janela de aviso, não envia — o cliente acabou de pagar!
+    if (c.updatedAt) {
+      const updatedHoursAgo = (Date.now() - new Date(c.updatedAt).getTime()) / (1000 * 60 * 60);
+      if (updatedHoursAgo < 24 && daysLeft >= 0) {
+        console.log(`⏭️  ${c.name} renovado há ${Math.round(updatedHoursAgo)}h. Pulando aviso.`);
         continue;
       }
+    }
+
+    // Escolhe o cliente WhatsApp correto
+    // Respeita estritamente o número configurado — nunca usa fallback
+    const senderKey = c.sender || 'work';
+    const waClient = clientsRef[senderKey];
+
+    if (!waClient || !waClient.ready) {
+      console.warn(`⚠️  WhatsApp [${senderKey}] não disponível para ${c.name}. Pulando.`);
+      continue;
     }
 
     await sendReminder(waClient.instance, c, daysLeft);
