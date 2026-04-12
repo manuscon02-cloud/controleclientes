@@ -297,7 +297,7 @@
   <!-- FINANCEIRO -->
   <div id="tab-financeiro" class="tab-content">
     <div class="stats">
-      <div class="card"><div class="label">Receita Mensal</div><div class="value green"  id="fin-revenue">—</div></div>
+      <div class="card"><div class="label">MRR (receita/mês)</div><div class="value green"  id="fin-revenue">—</div></div>
       <div class="card"><div class="label">Custo Total</div><div class="value red"       id="fin-cost">—</div></div>
       <div class="card"><div class="label">Lucro Mensal</div><div class="value purple"   id="fin-profit">—</div></div>
       <div class="card"><div class="label">Clientes Ativos</div><div class="value blue"  id="fin-clients">—</div></div>
@@ -307,7 +307,7 @@
       <div class="table-header"><h2>💰 Lucro por Cliente</h2></div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Cliente</th><th>Servidor</th><th>Créditos</th><th>Custo/Créd.</th><th>Receita</th><th>Custo</th><th>Lucro</th></tr></thead>
+          <thead><tr><th>Cliente</th><th>Servidor</th><th>Créditos</th><th>Plano</th><th>Valor contrato / MRR</th><th>Custo/mês</th><th>Lucro/mês</th></tr></thead>
           <tbody id="fin-clients-tbody"></tbody>
         </table>
       </div>
@@ -533,9 +533,10 @@ async function loadClients() {
   const todayStr=new Date().toISOString().split('T')[0];
   // Ativos = status active E data futura ou hoje
   const active=allClients.filter(c=>c.status==='active' && c.dueDate>=todayStr);
+  // MRR = valor mensal normalizado por duração do plano
   // Vencidos = status active mas data passada
   const overdue=allClients.filter(c=>c.status==='active' && c.dueDate<todayStr);
-  const revenue=active.reduce((s,c)=>s+(c.price||0),0);
+  const revenue=active.reduce((s,c)=>s+monthlyValue(c),0);
   const expiring=active.filter(c=>{const d=new Date(c.dueDate+'T12:00:00');return d>=today&&d<=in7;}).length;
   document.getElementById('stat-active').textContent=active.length;
   document.getElementById('stat-revenue').textContent=fmtMoney(revenue);
@@ -546,6 +547,14 @@ async function loadClients() {
 async function loadServers() {
   const r=await fetch('/api/servers',{headers:apiH()}); allServers=await r.json();
   renderServers(); populateServerSelects();
+}
+
+function planMonths(plan) {
+  const map = { mensal:1, bimestral:2, trimestral:3, semestral:6, anual:12 };
+  return map[(plan||'').toLowerCase()] || 1;
+}
+function monthlyValue(client) {
+  return (client.price || 0) / planMonths(client.plan);
 }
 
 function getDaysLeft(d){ const t=new Date();t.setHours(0,0,0,0);const due=new Date(d+'T12:00:00');due.setHours(0,0,0,0);return Math.round((due-t)/86400000); }
@@ -566,9 +575,10 @@ function serverName(id){ const s=allServers.find(sv=>sv.id===id); return s?`<spa
 
 function calcProfit(c) {
   const sv=allServers.find(s=>s.id===c.serverId);
-  if(!sv) return null;
-  const cost=sv.costPerCredit*(c.credits||1);
-  return { cost, profit:(c.price||0)-cost };
+  const months=planMonths(c.plan);
+  const mv=monthlyValue(c); // receita mensal normalizada
+  const cost=sv?sv.costPerCredit*(c.credits||1):0; // custo fixo mensal (não divide pelo plano)
+  return { cost, profit:mv-cost, monthly:mv, months };
 }
 
 function renderClients() {
@@ -758,8 +768,9 @@ function renderFinanceiro() {
 
   const clientRows=active.map(c=>{
     const sv=allServers.find(s=>s.id===c.serverId);
-    const revenue=c.price||0;
-    const cost=sv?sv.costPerCredit*(c.credits||1):0;
+    const months=planMonths(c.plan);
+    const revenue=monthlyValue(c); // MRR deste cliente
+    const cost=sv?sv.costPerCredit*(c.credits||1):0; // custo fixo mensal (não divide pelo plano)
     const profit=revenue-cost;
     totalRevenue+=revenue; totalCost+=cost;
     return`<tr>
