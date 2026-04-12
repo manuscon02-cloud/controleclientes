@@ -119,6 +119,8 @@
   #toast.error   { background:#c62828; }
   .empty-row td { text-align:center; color:#b2bec3; padding:36px; }
   .tip { margin-top:12px; font-size:.8rem; color:#636e72; }
+  .stats .card { padding: 20px 22px; }
+  .stats .card .value { font-size: 1.8rem; }
 
   .log-icon { font-size:1.1rem; }
   .log-row td { font-size:.83rem; }
@@ -233,12 +235,13 @@
 
   <!-- CLIENTES -->
   <div id="tab-clientes" class="tab-content active">
-    <div class="stats">
-      <div class="card"><div class="label">Clientes Ativos</div><div class="value green"  id="stat-active">—</div></div>
-      <div class="card"><div class="label">MRR (receita/mês)</div><div class="value green"   id="stat-revenue">—</div></div>
-      <div class="card"><div class="label">Vencem em 7 dias</div><div class="value orange" id="stat-expiring">—</div></div>
-      <div class="card"><div class="label">Vencidos</div><div class="value red"           id="stat-overdue">—</div></div>
+    <div class="stats" style="grid-template-columns:repeat(3,1fr)">
+      <div class="card"><div class="label">Receita mensal</div><div class="value green" id="stat-revenue">—</div><div style="font-size:.8rem;color:#636e72;margin-top:4px" id="stat-active-sub">— clientes ativos</div></div>
+      <div class="card"><div class="label">Vencem em 7 dias</div><div class="value orange" id="stat-expiring">—</div><div style="font-size:.8rem;color:#636e72;margin-top:4px" id="stat-overdue-sub">— vencidos</div></div>
+      <div class="card"><div class="label">Seu lucro mensal</div><div class="value purple" id="stat-profit">—</div><div style="font-size:.8rem;color:#636e72;margin-top:4px" id="stat-cost-sub">custo: —</div></div>
     </div>
+    <input type="hidden" id="stat-active" value="0">
+    <input type="hidden" id="stat-overdue" value="0">
 
     <div class="section-card">
       <h2>➕ Cadastrar Novo Cliente</h2>
@@ -274,7 +277,7 @@
       </div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Nome</th><th>WhatsApp</th><th>Plano</th><th>Valor</th><th>Servidor</th><th>Créditos</th><th>Lucro</th><th>Vencimento</th><th>Número</th><th>Status</th><th>Ações</th></tr></thead>
+          <thead><tr><th>Nome</th><th>WhatsApp</th><th>Plano</th><th>Valor / mês</th><th>Servidor</th><th>Lucro/mês</th><th>Vencimento</th><th>Envio</th><th>Status</th><th>Ações</th></tr></thead>
           <tbody id="clients-tbody"></tbody>
         </table>
       </div>
@@ -307,13 +310,13 @@
 
   <!-- FINANCEIRO -->
   <div id="tab-financeiro" class="tab-content">
-    <div class="stats">
-      <div class="card"><div class="label">💰 Caixa (contratos ativos)</div><div class="value blue"   id="fin-cashflow">—</div></div>
-      <div class="card"><div class="label">📊 MRR (receita/mês)</div><div class="value green"  id="fin-revenue">—</div></div>
-      <div class="card"><div class="label">🔴 Custo Mensal</div><div class="value red"       id="fin-cost">—</div></div>
-      <div class="card"><div class="label">📈 Lucro Mensal</div><div class="value purple"   id="fin-profit">—</div></div>
-      <div class="card"><div class="label">Clientes Ativos</div><div class="value blue"  id="fin-clients">—</div></div>
+    <div class="stats" style="grid-template-columns:repeat(3,1fr);margin-bottom:12px">
+      <div class="card"><div class="label">💰 Caixa</div><div class="value blue" id="fin-cashflow">—</div><div style="font-size:.8rem;color:#636e72;margin-top:4px">valor dos contratos ativos</div></div>
+      <div class="card"><div class="label">Receita mensal</div><div class="value green" id="fin-revenue">—</div><div style="font-size:.8rem;color:#636e72;margin-top:4px" id="fin-clients-sub">— clientes ativos</div></div>
+      <div class="card"><div class="label">Seu lucro mensal</div><div class="value purple" id="fin-profit">—</div><div style="font-size:.8rem;color:#636e72;margin-top:4px" id="fin-cost-sub">custo: —</div></div>
     </div>
+    <input type="hidden" id="fin-cost" value="0">
+    <input type="hidden" id="fin-clients" value="0">
 
     <div class="section-card" style="padding:0">
       <div class="table-header"><h2>💰 Lucro por Cliente</h2></div>
@@ -550,10 +553,16 @@ async function loadClients() {
   const overdue=allClients.filter(c=>c.status==='active' && c.dueDate<todayStr);
   const revenue=active.reduce((s,c)=>s+monthlyValue(c),0);
   const expiring=active.filter(c=>{const d=new Date(c.dueDate+'T12:00:00');return d>=today&&d<=in7;}).length;
-  document.getElementById('stat-active').textContent=active.length;
+  document.getElementById('stat-active').value=active.length;
   document.getElementById('stat-revenue').textContent=fmtMoney(revenue);
   document.getElementById('stat-expiring').textContent=expiring;
-  document.getElementById('stat-overdue').textContent=overdue.length;
+  document.getElementById('stat-overdue').value=overdue.length;
+  document.getElementById('stat-active-sub').textContent=active.length+' clientes ativos';
+  document.getElementById('stat-overdue-sub').textContent=overdue.length+' vencido'+(overdue.length!==1?'s':'');
+  // Calculate profit for top card
+  const totalCostTop=active.reduce((s,cc)=>{const sv=allServers.find(x=>x.id===cc.serverId);return s+(sv?sv.costPerCredit*(cc.credits||1):0);},0);
+  document.getElementById('stat-profit').textContent=fmtMoney(revenue-totalCostTop);
+  document.getElementById('stat-cost-sub').textContent='custo: '+fmtMoney(totalCostTop)+'/mês';
   renderClients();
 }
 async function loadServers() {
@@ -599,7 +608,7 @@ function renderClients() {
     .filter(c=>c.name.toLowerCase().includes(q)||c.phone.includes(q)||(c.plan||'').toLowerCase().includes(q))
     .sort((a,b)=>getDaysLeft(a.dueDate)-getDaysLeft(b.dueDate));
   const tbody=document.getElementById('clients-tbody');
-  if(!filtered.length){tbody.innerHTML='<tr class="empty-row"><td colspan="11">Nenhum cliente encontrado</td></tr>';return;}
+  if(!filtered.length){tbody.innerHTML='<tr class="empty-row"><td colspan="10">Nenhum cliente encontrado</td></tr>';return;}
   tbody.innerHTML=filtered.map(c=>{
     const p=calcProfit(c);
     const profitHtml=p
@@ -818,9 +827,11 @@ function renderFinanceiro() {
   const cashflow=active.reduce((s,c)=>s+(c.price||0),0);
   document.getElementById('fin-cashflow').textContent=fmtMoney(cashflow);
   document.getElementById('fin-revenue').textContent=fmtMoney(totalRevenue);
-  document.getElementById('fin-cost').textContent=fmtMoney(totalCost);
+  document.getElementById('fin-cost').value=totalCost;
   document.getElementById('fin-profit').textContent=fmtMoney(totalRevenue-totalCost);
-  document.getElementById('fin-clients').textContent=active.length;
+  document.getElementById('fin-clients').value=active.length;
+  document.getElementById('fin-clients-sub').textContent=active.length+' clientes ativos';
+  document.getElementById('fin-cost-sub').textContent='seu custo: '+fmtMoney(totalCost)+'/mês';
 }
 
 let tt;
