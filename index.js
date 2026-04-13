@@ -18,7 +18,7 @@ const DATA_DIR = '/app/data';
 
 app.use(express.json());
 
-// ================= IMPORT =================
+/* ================= IMPORT ================= */
 function importDataIfNeeded() {
   try {
     const srcClients = '/app/seeddata/clients.json';
@@ -38,7 +38,7 @@ function importDataIfNeeded() {
 }
 importDataIfNeeded();
 
-// ================= AUTH =================
+/* ================= AUTH ================= */
 const sessions = new Set();
 
 function authMiddleware(req, res, next) {
@@ -61,22 +61,35 @@ app.post('/api/login', (req, res) => {
   res.json({ token });
 });
 
-// ================= LIMPEZA =================
+/* ================= LIMPEZA ================= */
 function cleanupChromium() {
   try { execSync('pkill -9 -f chromium 2>/dev/null || true'); } catch (_) {}
   try { execSync('pkill -9 -f chrome 2>/dev/null || true'); } catch (_) {}
 }
 
-// ================= WHATSAPP =================
+/* ================= WHATSAPP ================= */
 const clients = {
   personal: { instance: null, qr: null, ready: false },
   work: { instance: null, qr: null, ready: false }
 };
 
+const puppeteerOptions = {
+  headless: true,
+  args: [
+    '--no-sandbox',
+    '--disable-setuid-sandbox',
+    '--disable-dev-shm-usage',
+    '--disable-accelerated-2d-canvas',
+    '--no-first-run',
+    '--no-zygote',
+    '--disable-gpu'
+  ]
+};
+
 function createClient(key) {
   const c = new Client({
     authStrategy: new LocalAuth({ clientId: key, dataPath: AUTH_PATH }),
-    puppeteer: { headless: true }
+    puppeteer: puppeteerOptions
   });
 
   c.on('qr', async (qr) => {
@@ -85,6 +98,7 @@ function createClient(key) {
   });
 
   c.on('ready', () => {
+    console.log(`✅ ${key} conectado`);
     clients[key].ready = true;
     scheduler.startPartial(clients);
   });
@@ -103,7 +117,7 @@ function createClient(key) {
 
 createClient('work').initialize();
 
-// ================= CLIENTES =================
+/* ================= CLIENTES ================= */
 app.get('/api/clients', (req, res) => res.json(db.getAll()));
 
 app.post('/api/clients', (req, res) => {
@@ -125,7 +139,7 @@ app.post('/api/clients', (req, res) => {
   res.json(newClient);
 });
 
-// ================= RECEITA CORRIGIDA =================
+/* ================= RECEITA CORRIGIDA ================= */
 app.get('/api/revenue', (req, res) => {
   const today = new Date().toISOString().split('T')[0];
   const all = db.getAll();
@@ -162,5 +176,7 @@ app.get('/api/revenue', (req, res) => {
   });
 });
 
-// ================= START =================
-app.listen(PORT, () => console.log(`Rodando em ${PORT}`));
+/* ================= START ================= */
+backup.startBackupScheduler();
+
+app.listen(PORT, () => console.log(`🌐 Rodando em ${PORT}`));
