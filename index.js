@@ -18,25 +18,32 @@ const DATA_DIR = '/app/data';
 
 app.use(express.json());
 
-/* ================= IMPORT ================= */
-function importDataIfNeeded() {
-  try {
-    const srcClients = '/app/seeddata/clients.json';
-    const srcServers = '/app/seeddata/servers.json';
-    const dstClients = path.join(DATA_DIR, 'clients.json');
-    const dstServers = path.join(DATA_DIR, 'servers.json');
-
-    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-
-    if (fs.existsSync(srcClients) && (!fs.existsSync(dstClients) || process.env.FORCE_IMPORT === 'true')) {
-      fs.copyFileSync(srcClients, dstClients);
-    }
-    if (fs.existsSync(srcServers) && (!fs.existsSync(dstServers) || process.env.FORCE_IMPORT === 'true')) {
-      fs.copyFileSync(srcServers, dstServers);
-    }
-  } catch (e) {}
+/* ================= LIMPEZA FORTE (ANTI BUG RAILWAY) ================= */
+function cleanupChromium() {
+  try { execSync('pkill -9 -f chromium 2>/dev/null || true'); } catch (_) {}
+  try { execSync('pkill -9 -f chrome 2>/dev/null || true'); } catch (_) {}
 }
-importDataIfNeeded();
+
+function removeLocks(dir) {
+  if (!fs.existsSync(dir)) return;
+  fs.readdirSync(dir).forEach(file => {
+    if (
+      file.includes('Singleton') ||
+      file.includes('lock') ||
+      file.includes('.lock')
+    ) {
+      try {
+        fs.unlinkSync(path.join(dir, file));
+        console.log('🔓 Lock removido:', file);
+      } catch (_) {}
+    }
+  });
+}
+
+// 🔥 roda limpeza antes de tudo
+cleanupChromium();
+removeLocks('/app/data');
+removeLocks('/tmp');
 
 /* ================= AUTH ================= */
 const sessions = new Set();
@@ -54,22 +61,18 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 app.post('/api/login', (req, res) => {
   const { password } = req.body;
-  if (password !== DASHBOARD_PASSWORD) return res.status(401).json({ error: 'Senha incorreta.' });
+  if (password !== DASHBOARD_PASSWORD)
+    return res.status(401).json({ error: 'Senha incorreta.' });
+
   const token = crypto.randomBytes(32).toString('hex');
   sessions.add(token);
   setTimeout(() => sessions.delete(token), 24 * 60 * 60 * 1000);
+
   res.json({ token });
 });
 
-/* ================= LIMPEZA ================= */
-function cleanupChromium() {
-  try { execSync('pkill -9 -f chromium 2>/dev/null || true'); } catch (_) {}
-  try { execSync('pkill -9 -f chrome 2>/dev/null || true'); } catch (_) {}
-}
-
 /* ================= WHATSAPP ================= */
 const clients = {
-  personal: { instance: null, qr: null, ready: false },
   work: { instance: null, qr: null, ready: false }
 };
 
@@ -88,7 +91,10 @@ const puppeteerOptions = {
 
 function createClient(key) {
   const c = new Client({
-    authStrategy: new LocalAuth({ clientId: key, dataPath: AUTH_PATH }),
+    authStrategy: new LocalAuth({
+      clientId: key,
+      dataPath: AUTH_PATH
+    }),
     puppeteer: puppeteerOptions
   });
 
@@ -98,17 +104,19 @@ function createClient(key) {
   });
 
   c.on('ready', () => {
-    console.log(`✅ ${key} conectado`);
+    console.log('✅ WhatsApp conectado!');
     clients[key].ready = true;
     scheduler.startPartial(clients);
   });
 
   c.on('disconnected', () => {
+    console.log('⚠️ WhatsApp desconectado, reiniciando...');
     clients[key].ready = false;
     setTimeout(() => {
       cleanupChromium();
+      removeLocks('/app/data');
       c.initialize();
-    }, 20000);
+    }, 15000);
   });
 
   clients[key].instance = c;
@@ -118,7 +126,9 @@ function createClient(key) {
 createClient('work').initialize();
 
 /* ================= CLIENTES ================= */
-app.get('/api/clients', (req, res) => res.json(db.getAll()));
+app.get('/api/clients', (req, res) => {
+  res.json(db.getAll());
+});
 
 app.post('/api/clients', (req, res) => {
   const { name, phone, plan, price, dueDate, sender, serverId, credits } = req.body;
@@ -143,7 +153,11 @@ app.post('/api/clients', (req, res) => {
 app.get('/api/revenue', (req, res) => {
   const today = new Date().toISOString().split('T')[0];
   const all = db.getAll();
-  const active = all.filter(c => c.status === 'active' && c.dueDate >= today);
+
+  const active = all.filter(
+    c => c.status === 'active' && c.dueDate >= today
+  );
+
   const servers = db.getServers();
 
   function getMonthlyValue(c) {
@@ -161,7 +175,9 @@ app.get('/api/revenue', (req, res) => {
     return cr > 3 ? 1 : cr;
   }
 
-  const revenue = active.reduce((s, c) => s + getMonthlyValue(c), 0);
+  const revenue = active.reduce((s, c) => {
+    return s + getMonthlyValue(c);
+  }, 0);
 
   const totalCost = active.reduce((s, c) => {
     const sv = servers.find(x => x.id === c.serverId);
@@ -179,4 +195,6 @@ app.get('/api/revenue', (req, res) => {
 /* ================= START ================= */
 backup.startBackupScheduler();
 
-app.listen(PORT, () => console.log(`🌐 Rodando em ${PORT}`));
+app.listen(PORT, () => {
+  console.log(`🚀 Rodando na porta ${PORT}`);
+});
