@@ -183,7 +183,7 @@ app.delete('/api/servers/:id', (req, res) => {
 app.get('/api/clients', (req, res) => res.json(db.getAll()));
 
 app.post('/api/clients', (req, res) => {
-  const { name, phone, plan, price, dueDate, sender, serverId, credits } = req.body;
+  const { name, phone, plan, price, dueDate, sender, serverId, credits, serviceType } = req.body;
   if (!name || !phone || !plan || !price || !dueDate || !sender)
     return res.status(400).json({ error: 'Todos os campos são obrigatórios.' });
   const newClient = db.add({ name, phone: phone.replace(/\D/g,''), plan, price: parseFloat(price), dueDate, sender, serverId, credits: parseInt(credits)||1 });
@@ -284,6 +284,22 @@ app.post('/api/backup', async (req, res) => {
   const result = await backup.sendBackup(true);
   if (result.success) res.json({ success: true, message: 'Backup enviado para ' + process.env.EMAIL_TO });
   else res.status(500).json({ error: result.error || 'Erro ao enviar backup' });
+});
+
+
+// ─── Pagamentos ───────────────────────────────────────────────────────────────
+app.get('/api/payments', (req, res) => {
+  const { from, to } = req.query;
+  if (from && to) return res.json(db.getPaymentsByPeriod(from, to));
+  res.json(db.getPayments());
+});
+
+app.post('/api/payments', (req, res) => {
+  const { clientId, clientName, amount, bank, serviceType, note, paidAt } = req.body;
+  if (!clientId || !amount) return res.status(400).json({ error: 'Cliente e valor são obrigatórios.' });
+  const payment = db.addPayment({ clientId, clientName, amount, bank, serviceType, note, paidAt });
+  db.addLog('renovacao', clientName, 'Pagamento de R$ ' + parseFloat(amount).toFixed(2) + ' via ' + (bank||'Nubank'));
+  res.json(payment);
 });
 
 // ─── Migração: corrige créditos antigos ──────────────────────────────────────
