@@ -233,18 +233,46 @@ app.post('/api/clients/:id/test', async (req, res) => {
 });
 
 // ─── Receita ──────────────────────────────────────────────────────────────────
+// Duração do plano em meses
+function planMonths(plan) {
+  const map = { mensal:1, bimestral:2, trimestral:3, semestral:6, anual:12 };
+  return map[(plan||'').toLowerCase()] || 1;
+}
+
+// Valor mensal normalizado (MRR) de um cliente
+function monthlyValue(client) {
+  return (client.price || 0) / planMonths(client.plan);
+}
+
+// Custo mensal fixo por cliente (independe do plano)
+function monthlyCost(client, servers) {
+  const sv = servers.find(x => x.id === client.serverId);
+  return sv ? sv.costPerCredit * (client.credits || 1) : 0;
+}
+
 app.get('/api/revenue', (req, res) => {
   const today = new Date().toISOString().split('T')[0];
   const all = db.getAll();
-  // Ativos = status active E data futura ou hoje
   const active = all.filter(c => c.status === 'active' && c.dueDate >= today);
   const servers = db.getServers();
-  const revenue = active.reduce((s, c) => s + (c.price || 0), 0);
-  const totalCost = active.reduce((s, c) => {
-    const sv = servers.find(x => x.id === c.serverId);
-    return s + (sv ? sv.costPerCredit * (c.credits || 1) : 0);
-  }, 0);
-  res.json({ revenue, totalCost, profit: revenue - totalCost, activeCount: active.length, totalCount: all.length });
+
+  // MRR = soma dos valores mensais normalizados
+  const mrr = active.reduce((s, c) => s + monthlyValue(c), 0);
+
+  // Custo mensal normalizado
+  const totalCost = active.reduce((s, c) => s + monthlyCost(c, servers), 0);
+
+  // Caixa = soma dos valores brutos pagos (o que entrou no bolso)
+  const cashflow = active.reduce((s, c) => s + (c.price || 0), 0);
+
+  res.json({
+    revenue: mrr,          // MRR - receita mensal real
+    cashflow,              // Caixa - valor bruto dos contratos ativos
+    totalCost,
+    profit: mrr - totalCost,
+    activeCount: active.length,
+    totalCount: all.length
+  });
 });
 
 
@@ -256,6 +284,35 @@ app.post('/api/backup', async (req, res) => {
   const result = await backup.sendBackup(true);
   if (result.success) res.json({ success: true, message: 'Backup enviado para ' + process.env.EMAIL_TO });
   else res.status(500).json({ error: result.error || 'Erro ao enviar backup' });
+});
+
+// ─── Migração: corrige créditos antigos ──────────────────────────────────────
+app.post('/api/migrate/fix-credits', (req, res) => {
+  const planDurations = { mensal:1, bimestral:2, trimestral:3, semestral:6, anual:12 };
+  const clients = db.getAll();
+  let fixed = 0;
+  const details = [];
+
+  clients.forEach(c => {
+    const credits = parseInt(c.credits) || 1;
+    if (credits <= 3) return; // OK, não mexe
+
+    const planDuration = planDurations[(c.plan||'').toLowerCase()] || 0;
+    // Se créditos == duração do plano → era erro de cadastro antigo
+    const shouldFix = credits === planDuration || credits > 3;
+
+    if (shouldFix) {
+      db.update(c.id, { credits: 1 });
+      details.push({ name: c.name, oldCredits: credits, newCredits: 1 });
+      fixed++;
+    }
+  });
+
+  if (fixed > 0) {
+    db.addLog('ativacao', 'Sistema', `Migração: ${fixed} cliente(s) com créditos corrigidos para 1`);
+  }
+
+  res.json({ fixed, details });
 });
 
 // ─── Disparo de Recuperação ───────────────────────────────────────────────────
