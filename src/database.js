@@ -32,6 +32,7 @@ function add(data) {
     sender: data.sender,
     serverId: data.serverId || null,
     credits: parseInt(data.credits) || 1,
+    serviceType: data.serviceType || 'iptv',
     status: 'active',
     sentNotifications: [],
     notes: data.notes || '',
@@ -104,6 +105,44 @@ console.log(`📋 clients.json existe: ${fs.existsSync(DB_FILE)}`);
 console.log(`🖥️  servers.json existe: ${fs.existsSync(SERVERS_FILE)}`);
 
 module.exports = { getAll, getById, add, update, remove, getServers, addServer, updateServer, removeServer };
+
+// ─── Pagamentos ───────────────────────────────────────────────────────────────
+const PAYMENTS_FILE = path.join(DATA_DIR, 'payments.json');
+
+function getPayments() {
+  ensureStorage();
+  try {
+    if (!fs.existsSync(PAYMENTS_FILE)) return [];
+    return JSON.parse(fs.readFileSync(PAYMENTS_FILE, 'utf8'));
+  } catch { return []; }
+}
+
+function addPayment(data) {
+  const payments = getPayments();
+  const p = {
+    id: crypto.randomUUID(),
+    clientId:   data.clientId,
+    clientName: data.clientName,
+    amount:     parseFloat(data.amount) || 0,
+    bank:       data.bank || 'Nubank',
+    serviceType: data.serviceType || 'iptv',
+    note:       data.note || '',
+    paidAt:     data.paidAt || new Date().toISOString().split('T')[0],
+    createdAt:  new Date().toISOString()
+  };
+  payments.unshift(p);
+  fs.writeFileSync(PAYMENTS_FILE, JSON.stringify(payments, null, 2));
+  return p;
+}
+
+function getPaymentsByPeriod(from, to) {
+  return getPayments().filter(p => p.paidAt >= from && p.paidAt <= to);
+}
+
+module.exports.getPayments = getPayments;
+module.exports.addPayment = addPayment;
+module.exports.getPaymentsByPeriod = getPaymentsByPeriod;
+
 
 // ─── Logs ─────────────────────────────────────────────────────────────────────
 const LOG_FILE = path.join(DATA_DIR, 'logs.json');
