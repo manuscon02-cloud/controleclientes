@@ -19,10 +19,8 @@ const DATA_DIR = '/app/data';
 app.use(express.json());
 
 // ─── Importação automática de dados ──────────────────────────────────────────
-// Se existir data/clients.json no código E não existir ainda no volume, copia.
 function importDataIfNeeded() {
   try {
-    // Lê de /app/seeddata — pasta fora do volume que não é sobrescrita na montagem
     const srcClients = '/app/seeddata/clients.json';
     const srcServers = '/app/seeddata/servers.json';
     const dstClients = path.join(DATA_DIR, 'clients.json');
@@ -104,7 +102,7 @@ const puppeteerOptions = {
   executablePath,
   args: puppeteerArgs,
   headless: true,
-  protocolTimeout: 120000  // 2 minutos de timeout
+  protocolTimeout: 120000
 };
 
 const clients = {
@@ -161,19 +159,16 @@ app.get('/api/status', (req, res) => res.json({
 
 // ─── Servidores ───────────────────────────────────────────────────────────────
 app.get('/api/servers', (req, res) => res.json(db.getServers()));
-
 app.post('/api/servers', (req, res) => {
   const { name, costPerCredit, notes } = req.body;
   if (!name) return res.status(400).json({ error: 'Nome obrigatório.' });
   res.json(db.addServer({ name, costPerCredit, notes }));
 });
-
 app.put('/api/servers/:id', (req, res) => {
   const u = db.updateServer(req.params.id, req.body);
   if (!u) return res.status(404).json({ error: 'Não encontrado.' });
   res.json(u);
 });
-
 app.delete('/api/servers/:id', (req, res) => {
   if (!db.removeServer(req.params.id)) return res.status(404).json({ error: 'Não encontrado.' });
   res.json({ success: true });
@@ -181,34 +176,29 @@ app.delete('/api/servers/:id', (req, res) => {
 
 // ─── Clientes ─────────────────────────────────────────────────────────────────
 app.get('/api/clients', (req, res) => res.json(db.getAll()));
-
 app.post('/api/clients', (req, res) => {
   const { name, phone, plan, price, dueDate, sender, serverId, credits, serviceType } = req.body;
   if (!name || !phone || !plan || !price || !dueDate || !sender)
     return res.status(400).json({ error: 'Todos os campos são obrigatórios.' });
-  const newClient = db.add({ name, phone: phone.replace(/\D/g,''), plan, price: parseFloat(price), dueDate, sender, serverId, credits: parseInt(credits)||1 });
+  const newClient = db.add({ name, phone: phone.replace(/\D/g,''), plan, price: parseFloat(price), dueDate, sender, serverId, credits: parseInt(credits)||1, serviceType: serviceType||'iptv' });
   db.addLog('cadastro', name, 'Plano ' + plan + ' | R$ ' + price);
   res.json(newClient);
 });
-
 app.put('/api/clients/:id', (req, res) => {
   const u = db.update(req.params.id, req.body);
   if (!u) return res.status(404).json({ error: 'Não encontrado.' });
   if (req.body.status) {
     const action = req.body.status === 'active' ? 'ativacao' : 'pausa';
-    const detail = req.body.status === 'active' ? 'Cliente ativado' : 'Cliente pausado';
-    db.addLog(action, u.name, detail);
+    db.addLog(action, u.name, req.body.status === 'active' ? 'Cliente ativado' : 'Cliente pausado');
   }
   res.json(u);
 });
-
 app.delete('/api/clients/:id', (req, res) => {
   const toDelete = db.getById(req.params.id);
   if (!db.remove(req.params.id)) return res.status(404).json({ error: 'Não encontrado.' });
   if (toDelete) db.addLog('exclusao', toDelete.name, 'Cliente removido');
   res.json({ success: true });
 });
-
 app.post('/api/clients/:id/renew', (req, res) => {
   const c = db.getById(req.params.id);
   if (!c) return res.status(404).json({ error: 'Não encontrado.' });
@@ -220,7 +210,6 @@ app.post('/api/clients/:id/renew', (req, res) => {
   db.addLog('renovacao', c.name, 'Renovado para ' + newDate.split('-').reverse().join('/'));
   res.json(updated);
 });
-
 app.post('/api/clients/:id/test', async (req, res) => {
   const c = db.getById(req.params.id);
   if (!c) return res.status(404).json({ error: 'Não encontrado.' });
@@ -233,59 +222,37 @@ app.post('/api/clients/:id/test', async (req, res) => {
 });
 
 // ─── Receita ──────────────────────────────────────────────────────────────────
-// Duração do plano em meses
 function planMonths(plan) {
   const map = { mensal:1, bimestral:2, trimestral:3, semestral:6, anual:12 };
   return map[(plan||'').toLowerCase()] || 1;
 }
-
-// Valor mensal normalizado (MRR) de um cliente
 function monthlyValue(client) {
   return (client.price || 0) / planMonths(client.plan);
 }
-
-// Custo mensal fixo por cliente (independe do plano)
 function monthlyCost(client, servers) {
   const sv = servers.find(x => x.id === client.serverId);
   return sv ? sv.costPerCredit * (client.credits || 1) : 0;
 }
-
 app.get('/api/revenue', (req, res) => {
   const today = new Date().toISOString().split('T')[0];
   const all = db.getAll();
   const active = all.filter(c => c.status === 'active' && c.dueDate >= today);
   const servers = db.getServers();
-
-  // MRR = soma dos valores mensais normalizados
   const mrr = active.reduce((s, c) => s + monthlyValue(c), 0);
-
-  // Custo mensal normalizado
   const totalCost = active.reduce((s, c) => s + monthlyCost(c, servers), 0);
-
-  // Caixa = soma dos valores brutos pagos (o que entrou no bolso)
   const cashflow = active.reduce((s, c) => s + (c.price || 0), 0);
-
-  res.json({
-    revenue: mrr,          // MRR - receita mensal real
-    cashflow,              // Caixa - valor bruto dos contratos ativos
-    totalCost,
-    profit: mrr - totalCost,
-    activeCount: active.length,
-    totalCount: all.length
-  });
+  res.json({ revenue: mrr, cashflow, totalCost, profit: mrr - totalCost, activeCount: active.length, totalCount: all.length });
 });
 
-
-// ─── Logs ────────────────────────────────────────────────────────────────────
+// ─── Logs ─────────────────────────────────────────────────────────────────────
 app.get('/api/logs', (req, res) => res.json(db.getLogs()));
 
-// ─── Backup Manual ───────────────────────────────────────────────────────────
+// ─── Backup ───────────────────────────────────────────────────────────────────
 app.post('/api/backup', async (req, res) => {
   const result = await backup.sendBackup(true);
   if (result.success) res.json({ success: true, message: 'Backup enviado para ' + process.env.EMAIL_TO });
   else res.status(500).json({ error: result.error || 'Erro ao enviar backup' });
 });
-
 
 // ─── Pagamentos ───────────────────────────────────────────────────────────────
 app.get('/api/payments', (req, res) => {
@@ -302,32 +269,52 @@ app.post('/api/payments', (req, res) => {
   res.json(payment);
 });
 
-// ─── Migração: corrige créditos antigos ──────────────────────────────────────
+// ─── Editar pagamento ─────────────────────────────────────────────────────────
+app.put('/api/payments/:id', (req, res) => {
+  const PAYMENTS_FILE = path.join(DATA_DIR, 'payments.json');
+  try {
+    const payments = fs.existsSync(PAYMENTS_FILE) ? JSON.parse(fs.readFileSync(PAYMENTS_FILE, 'utf8')) : [];
+    const idx = payments.findIndex(p => p.id === req.params.id);
+    if (idx === -1) return res.status(404).json({ error: 'Pagamento não encontrado.' });
+    payments[idx] = { ...payments[idx], ...req.body, updatedAt: new Date().toISOString() };
+    fs.writeFileSync(PAYMENTS_FILE, JSON.stringify(payments, null, 2));
+    db.addLog('renovacao', payments[idx].clientName, 'Pagamento editado: R$ ' + payments[idx].amount + ' via ' + payments[idx].bank);
+    res.json(payments[idx]);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── Excluir pagamento ────────────────────────────────────────────────────────
+app.delete('/api/payments/:id', (req, res) => {
+  const PAYMENTS_FILE = path.join(DATA_DIR, 'payments.json');
+  try {
+    const payments = fs.existsSync(PAYMENTS_FILE) ? JSON.parse(fs.readFileSync(PAYMENTS_FILE, 'utf8')) : [];
+    const idx = payments.findIndex(p => p.id === req.params.id);
+    if (idx === -1) return res.status(404).json({ error: 'Pagamento não encontrado.' });
+    const removed = payments.splice(idx, 1)[0];
+    fs.writeFileSync(PAYMENTS_FILE, JSON.stringify(payments, null, 2));
+    db.addLog('exclusao', removed.clientName, 'Pagamento removido: R$ ' + removed.amount + ' via ' + removed.bank);
+    res.json({ success: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── Migração ─────────────────────────────────────────────────────────────────
 app.post('/api/migrate/fix-credits', (req, res) => {
   const planDurations = { mensal:1, bimestral:2, trimestral:3, semestral:6, anual:12 };
-  const clients = db.getAll();
+  const allClients = db.getAll();
   let fixed = 0;
   const details = [];
-
-  clients.forEach(c => {
+  allClients.forEach(c => {
     const credits = parseInt(c.credits) || 1;
-    if (credits <= 3) return; // OK, não mexe
-
+    if (credits <= 3) return;
     const planDuration = planDurations[(c.plan||'').toLowerCase()] || 0;
-    // Se créditos == duração do plano → era erro de cadastro antigo
     const shouldFix = credits === planDuration || credits > 3;
-
     if (shouldFix) {
       db.update(c.id, { credits: 1 });
       details.push({ name: c.name, oldCredits: credits, newCredits: 1 });
       fixed++;
     }
   });
-
-  if (fixed > 0) {
-    db.addLog('ativacao', 'Sistema', `Migração: ${fixed} cliente(s) com créditos corrigidos para 1`);
-  }
-
+  if (fixed > 0) db.addLog('ativacao', 'Sistema', `Migração: ${fixed} cliente(s) com créditos corrigidos para 1`);
   res.json({ fixed, details });
 });
 
@@ -336,20 +323,12 @@ app.post('/api/blast', async (req, res) => {
   const { clientIds, message, imageBase64, imageMime } = req.body;
   if (!clientIds || !clientIds.length || !message)
     return res.status(400).json({ error: 'Selecione clientes e escreva uma mensagem.' });
-
   const results = { sent: [], failed: [] };
-
   for (const id of clientIds) {
     const c = db.getById(id);
-    if (!c || !c.phone) {
-      results.failed.push({ name: c ? c.name : id, reason: 'Sem WhatsApp' });
-      continue;
-    }
+    if (!c || !c.phone) { results.failed.push({ name: c ? c.name : id, reason: 'Sem WhatsApp' }); continue; }
     const key = c.sender || 'work';
-    if (!clients[key] || !clients[key].ready) {
-      results.failed.push({ name: c.name, reason: 'WhatsApp não conectado' });
-      continue;
-    }
+    if (!clients[key] || !clients[key].ready) { results.failed.push({ name: c.name, reason: 'WhatsApp não conectado' }); continue; }
     const phone = c.phone + '@c.us';
     const msg = message.replace(/\[nome\]/gi, c.name);
     try {
@@ -363,14 +342,11 @@ app.post('/api/blast', async (req, res) => {
       results.sent.push({ name: c.name });
       db.addLog('recuperacao', c.name, 'Mensagem de recuperação enviada');
       await new Promise(r => setTimeout(r, 2000));
-    } catch(err) {
-      results.failed.push({ name: c.name, reason: err.message });
-    }
+    } catch(err) { results.failed.push({ name: c.name, reason: err.message }); }
   }
   res.json(results);
 });
 
 // ─── Start ────────────────────────────────────────────────────────────────────
 backup.startBackupScheduler();
-
 app.listen(PORT, () => console.log(`🌐 Dashboard em http://localhost:${PORT}`));
