@@ -271,30 +271,18 @@ app.post('/api/payments', (req, res) => {
 
 // ─── Editar pagamento ─────────────────────────────────────────────────────────
 app.put('/api/payments/:id', (req, res) => {
-  const PAYMENTS_FILE = path.join(DATA_DIR, 'payments.json');
-  try {
-    const payments = fs.existsSync(PAYMENTS_FILE) ? JSON.parse(fs.readFileSync(PAYMENTS_FILE, 'utf8')) : [];
-    const idx = payments.findIndex(p => p.id === req.params.id);
-    if (idx === -1) return res.status(404).json({ error: 'Pagamento não encontrado.' });
-    payments[idx] = { ...payments[idx], ...req.body, updatedAt: new Date().toISOString() };
-    fs.writeFileSync(PAYMENTS_FILE, JSON.stringify(payments, null, 2));
-    db.addLog('renovacao', payments[idx].clientName, 'Pagamento editado: R$ ' + payments[idx].amount + ' via ' + payments[idx].bank);
-    res.json(payments[idx]);
-  } catch(e) { res.status(500).json({ error: e.message }); }
+  const updated = db.updatePayment(req.params.id, req.body);
+  if (!updated) return res.status(404).json({ error: 'Pagamento não encontrado.' });
+  db.addLog('renovacao', updated.clientName, 'Pagamento editado: R$ ' + updated.amount + ' via ' + updated.bank);
+  res.json(updated);
 });
 
 // ─── Excluir pagamento ────────────────────────────────────────────────────────
 app.delete('/api/payments/:id', (req, res) => {
-  const PAYMENTS_FILE = path.join(DATA_DIR, 'payments.json');
-  try {
-    const payments = fs.existsSync(PAYMENTS_FILE) ? JSON.parse(fs.readFileSync(PAYMENTS_FILE, 'utf8')) : [];
-    const idx = payments.findIndex(p => p.id === req.params.id);
-    if (idx === -1) return res.status(404).json({ error: 'Pagamento não encontrado.' });
-    const removed = payments.splice(idx, 1)[0];
-    fs.writeFileSync(PAYMENTS_FILE, JSON.stringify(payments, null, 2));
-    db.addLog('exclusao', removed.clientName, 'Pagamento removido: R$ ' + removed.amount + ' via ' + removed.bank);
-    res.json({ success: true });
-  } catch(e) { res.status(500).json({ error: e.message }); }
+  const removed = db.removePayment(req.params.id);
+  if (!removed) return res.status(404).json({ error: 'Pagamento não encontrado.' });
+  db.addLog('exclusao', removed.clientName, 'Pagamento removido: R$ ' + removed.amount + ' via ' + removed.bank);
+  res.json({ success: true });
 });
 
 // ─── Migração ─────────────────────────────────────────────────────────────────

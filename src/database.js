@@ -104,8 +104,6 @@ console.log(`📂 Database path: ${DATA_DIR}`);
 console.log(`📋 clients.json existe: ${fs.existsSync(DB_FILE)}`);
 console.log(`🖥️  servers.json existe: ${fs.existsSync(SERVERS_FILE)}`);
 
-module.exports = { getAll, getById, add, update, remove, getServers, addServer, updateServer, removeServer };
-
 // ─── Pagamentos ───────────────────────────────────────────────────────────────
 const PAYMENTS_FILE = path.join(DATA_DIR, 'payments.json');
 
@@ -121,28 +119,41 @@ function addPayment(data) {
   const payments = getPayments();
   const p = {
     id: crypto.randomUUID(),
-    clientId:   data.clientId,
-    clientName: data.clientName,
-    amount:     parseFloat(data.amount) || 0,
-    bank:       data.bank || 'Nubank',
+    clientId:    data.clientId,
+    clientName:  data.clientName,
+    amount:      parseFloat(data.amount) || 0,
+    bank:        data.bank || 'Nubank',
     serviceType: data.serviceType || 'iptv',
-    note:       data.note || '',
-    paidAt:     data.paidAt || new Date().toISOString().split('T')[0],
-    createdAt:  new Date().toISOString()
+    note:        data.note || '',
+    paidAt:      data.paidAt || new Date().toISOString().split('T')[0],
+    createdAt:   new Date().toISOString()
   };
   payments.unshift(p);
   fs.writeFileSync(PAYMENTS_FILE, JSON.stringify(payments, null, 2));
   return p;
 }
 
+function updatePayment(id, data) {
+  const payments = getPayments();
+  const idx = payments.findIndex(p => p.id === id);
+  if (idx === -1) return null;
+  payments[idx] = { ...payments[idx], ...data, updatedAt: new Date().toISOString() };
+  fs.writeFileSync(PAYMENTS_FILE, JSON.stringify(payments, null, 2));
+  return payments[idx];
+}
+
+function removePayment(id) {
+  const payments = getPayments();
+  const idx = payments.findIndex(p => p.id === id);
+  if (idx === -1) return null;
+  const removed = payments.splice(idx, 1)[0];
+  fs.writeFileSync(PAYMENTS_FILE, JSON.stringify(payments, null, 2));
+  return removed;
+}
+
 function getPaymentsByPeriod(from, to) {
   return getPayments().filter(p => p.paidAt >= from && p.paidAt <= to);
 }
-
-module.exports.getPayments = getPayments;
-module.exports.addPayment = addPayment;
-module.exports.getPaymentsByPeriod = getPaymentsByPeriod;
-
 
 // ─── Logs ─────────────────────────────────────────────────────────────────────
 const LOG_FILE = path.join(DATA_DIR, 'logs.json');
@@ -159,16 +170,19 @@ function addLog(type, clientName, detail) {
     const logs = getLogs();
     logs.unshift({
       id: crypto.randomUUID(),
-      type,        // 'cobranca' | 'renovacao' | 'ativacao' | 'pausa' | 'recuperacao' | 'cadastro' | 'exclusao'
+      type,
       clientName,
       detail,
       createdAt: new Date().toISOString()
     });
-    // Mantém só os últimos 500 logs
     if (logs.length > 500) logs.splice(500);
     fs.writeFileSync(LOG_FILE, JSON.stringify(logs, null, 2));
   } catch(e) { console.error('Erro ao salvar log:', e.message); }
 }
 
-module.exports.getLogs = getLogs;
-module.exports.addLog = addLog;
+module.exports = {
+  getAll, getById, add, update, remove,
+  getServers, addServer, updateServer, removeServer,
+  getPayments, addPayment, updatePayment, removePayment, getPaymentsByPeriod,
+  getLogs, addLog
+};
