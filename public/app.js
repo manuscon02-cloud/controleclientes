@@ -67,6 +67,7 @@ function renderQR() {
 }
 
 let allClients=[],allServers=[];
+let currentPage=1;
 async function loadAll(){ await Promise.all([loadClients(),loadServers()]); checkStatus(); }
 
 async function loadClients() {
@@ -123,13 +124,19 @@ function calcProfit(c) {
   return{cost,profit:mv-cost,monthly:mv};
 }
 
+function filterChanged() {
+  currentPage = 1;
+  renderClients();
+}
+
 function renderClients() {
-  const q          = document.getElementById('search').value.toLowerCase();
-  const fStatus    = document.getElementById('filter-status').value;
-  const fService   = document.getElementById('filter-service').value;
-  const fServer    = document.getElementById('filter-server').value;
-  const fDue       = document.getElementById('filter-due').value;
-  const today      = new Date().toISOString().split('T')[0];
+  const q       = document.getElementById('search').value.toLowerCase();
+  const fStatus = document.getElementById('filter-status').value;
+  const fService= document.getElementById('filter-service').value;
+  const fServer = document.getElementById('filter-server').value;
+  const fDue    = document.getElementById('filter-due').value;
+  const perPage = parseInt(document.getElementById('per-page')?.value || '25');
+  const today   = new Date().toISOString().split('T')[0];
 
   const filtered = allClients.filter(c => {
     if (q && !c.name.toLowerCase().includes(q) && !c.phone.includes(q) && !(c.plan||'').toLowerCase().includes(q)) return false;
@@ -137,25 +144,39 @@ function renderClients() {
     if (fStatus === 'overdue'  && !(c.status === 'active' && c.dueDate < today))  return false;
     if (fStatus === 'inactive' && c.status !== 'inactive') return false;
     if (fService && c.serviceType !== fService) return false;
-    if (fServer === '__none__' && c.serverId)          return false;
-    if (fServer && fServer !== '__none__' && c.serverId !== fServer) return false;
+    if (fServer === '__none__' && c.serverId)                          return false;
+    if (fServer && fServer !== '__none__' && c.serverId !== fServer)   return false;
     if (fDue) {
       const d = getDaysLeft(c.dueDate);
-      if (fDue === 'today'    && d !== 0)              return false;
-      if (fDue === '7d'       && (d < 0 || d > 7))    return false;
-      if (fDue === '15d'      && (d < 0 || d > 15))   return false;
-      if (fDue === 'past_due' && d >= 0)               return false;
-      if (fDue === 'ok'       && d < 15)               return false;
+      if (fDue === 'today'    && d !== 0)            return false;
+      if (fDue === '7d'       && (d < 0 || d > 7))  return false;
+      if (fDue === '15d'      && (d < 0 || d > 15)) return false;
+      if (fDue === 'past_due' && d >= 0)             return false;
+      if (fDue === 'ok'       && d < 15)             return false;
     }
     return true;
   }).sort((a,b) => getDaysLeft(a.dueDate) - getDaysLeft(b.dueDate));
 
+  const totalPages = Math.max(1, Math.ceil(filtered.length / perPage));
+  if (currentPage > totalPages) currentPage = totalPages;
+  const start = (currentPage - 1) * perPage;
+  const pageItems = filtered.slice(start, start + perPage);
+
   const countEl = document.getElementById('filter-count');
-  if (countEl) countEl.textContent = filtered.length + ' de ' + allClients.length + ' clientes';
+  if (countEl) {
+    const end = Math.min(start + perPage, filtered.length);
+    countEl.textContent = filtered.length
+      ? `${start+1}–${end} de ${filtered.length} (total: ${allClients.length})`
+      : `0 de ${allClients.length}`;
+  }
 
   const tbody = document.getElementById('clients-tbody');
-  if (!filtered.length) { tbody.innerHTML='<tr class="empty-row"><td colspan="11">Nenhum cliente encontrado</td></tr>'; return; }
-  tbody.innerHTML = filtered.map(c => {
+  if (!filtered.length) {
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="11">Nenhum cliente encontrado</td></tr>';
+    renderPagination(0, 0, 0);
+    return;
+  }
+  tbody.innerHTML = pageItems.map(c => {
     const p = calcProfit(c);
     const profitHtml = p ? `<span style="color:${p.profit>=0?'#2e7d32':'#c62828'};font-weight:700">${fmtMoney(p.profit)}</span>` : '<span style="color:#b2bec3">—</span>';
     return `<tr>
@@ -178,12 +199,45 @@ function renderClients() {
       </div></td>
     </tr>`;
   }).join('');
+
+  renderPagination(totalPages, filtered.length, perPage);
+}
+
+function renderPagination(totalPages, total, perPage) {
+  const el = document.getElementById('clients-pagination');
+  if (!el) return;
+  if (totalPages <= 1) { el.innerHTML = ''; return; }
+
+  const prev = `<button class="page-btn" ${currentPage===1?'disabled':''} onclick="goToPage(${currentPage-1})">‹ Anterior</button>`;
+  const next = `<button class="page-btn" ${currentPage===totalPages?'disabled':''} onclick="goToPage(${currentPage+1})">Próximo ›</button>`;
+
+  let pages = '';
+  const delta = 2;
+  const left  = currentPage - delta;
+  const right = currentPage + delta;
+
+  for (let i = 1; i <= totalPages; i++) {
+    if (i === 1 || i === totalPages || (i >= left && i <= right)) {
+      pages += `<button class="page-btn${i===currentPage?' active':''}" onclick="goToPage(${i})">${i}</button>`;
+    } else if (i === left - 1 || i === right + 1) {
+      pages += `<span class="page-ellipsis">…</span>`;
+    }
+  }
+
+  el.innerHTML = prev + pages + next;
+}
+
+function goToPage(page) {
+  currentPage = page;
+  renderClients();
+  document.getElementById('tab-clientes').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 function resetFilters() {
   ['search','filter-status','filter-service','filter-server','filter-due'].forEach(id => {
     const el = document.getElementById(id); if (el) el.value = '';
   });
+  currentPage = 1;
   renderClients();
 }
 

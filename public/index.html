@@ -213,31 +213,37 @@
     <div class="section-card" style="padding:0">
       <div class="table-header">
         <h2>👥 Clientes Cadastrados</h2>
-        <input class="search-box" type="text" id="search" placeholder="🔍 Buscar..." oninput="renderClients()" />
+        <input class="search-box" type="text" id="search" placeholder="🔍 Buscar..." oninput="filterChanged()" />
       </div>
       <div class="filter-bar">
-        <select id="filter-status" onchange="renderClients()">
+        <select id="filter-status" onchange="filterChanged()">
           <option value="">Todos os status</option>
           <option value="active">✅ Ativos</option>
           <option value="overdue">⚠️ Vencidos</option>
           <option value="inactive">⏸ Inativos</option>
         </select>
-        <select id="filter-service" onchange="renderClients()">
+        <select id="filter-service" onchange="filterChanged()">
           <option value="">Todos os serviços</option>
           <option value="iptv">📺 IPTV</option>
           <option value="cs">📡 CS</option>
         </select>
-        <select id="filter-server" onchange="renderClients()">
+        <select id="filter-server" onchange="filterChanged()">
           <option value="">Todos os servidores</option>
           <option value="__none__">Sem servidor</option>
         </select>
-        <select id="filter-due" onchange="renderClients()">
+        <select id="filter-due" onchange="filterChanged()">
           <option value="">Qualquer vencimento</option>
           <option value="today">Vence hoje</option>
           <option value="7d">Vence em até 7 dias</option>
           <option value="15d">Vence em até 15 dias</option>
           <option value="past_due">Vencidos</option>
           <option value="ok">Em dia (mais de 15 dias)</option>
+        </select>
+        <select id="per-page" onchange="filterChanged()" style="border:1px solid var(--border);border-radius:8px;padding:7px 10px;font-size:.82rem;outline:none;background:#fff;cursor:pointer">
+          <option value="10">10 por página</option>
+          <option value="25" selected>25 por página</option>
+          <option value="50">50 por página</option>
+          <option value="100">100 por página</option>
         </select>
         <button class="btn-clear" onclick="resetFilters()">✕ Limpar</button>
         <span class="filter-count" id="filter-count"></span>
@@ -248,6 +254,7 @@
           <tbody id="clients-tbody"></tbody>
         </table>
       </div>
+      <div class="pagination" id="clients-pagination"></div>
     </div>
   </div>
 
