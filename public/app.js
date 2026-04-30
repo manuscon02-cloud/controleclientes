@@ -196,6 +196,7 @@ function renderClients() {
         <button class="btn-action btn-edit" onclick="openEdit('${c.id}')">✏️</button>
         <button class="btn-action btn-renew" onclick="openPaymentModal('${c.id}')">💰 Renovar</button>
         <button class="btn-action btn-test" onclick="testClient('${c.id}')">📨</button>
+        <button class="btn-action" style="background:#f3e5f5;color:#6a1b9a" onclick="openClientHistory('${c.id}')">📋</button>
         <button class="btn-action btn-toggle" onclick="toggleClient('${c.id}','${c.status}')">${c.status==='active'?'⏸':'▶'}</button>
         <button class="btn-action btn-delete" onclick="deleteClient('${c.id}','${c.name}')">🗑</button>
       </div></td>
@@ -797,6 +798,45 @@ function renderExtrato() {
     </tr>
   `).join('')||'<tr class="empty-row"><td colspan="7">Nenhum pagamento no período</td></tr>';
   buildPagination('extrato-pagination',totalPages,extratoPage,'extratoGoTo');
+}
+
+async function openClientHistory(id) {
+  const c = allClients.find(x=>x.id===id);
+  if (!c) return;
+  document.getElementById('ch-client-name').textContent = c.name;
+  document.getElementById('ch-content').innerHTML = '<div style="text-align:center;padding:28px;color:#636e72">Carregando...</div>';
+  document.getElementById('client-history-modal').classList.add('show');
+  const res = await fetch('/api/logs', {headers: apiH()});
+  const logs = await res.json();
+  const clientLogs = logs.filter(l=>l.clientName===c.name).sort((a,b)=>b.ts.localeCompare(a.ts));
+  if (!clientLogs.length) {
+    document.getElementById('ch-content').innerHTML = '<div style="text-align:center;padding:28px;color:#b2bec3">Nenhuma atividade registrada.</div>';
+    return;
+  }
+  const cfg = {
+    cobranca:   {bg:'#fff8e1',color:'#e65100',icon:'📨',label:'Cobrança'},
+    renovacao:  {bg:'#e8f5e9',color:'#2e7d32',icon:'🔄',label:'Renovação'},
+    ativacao:   {bg:'#e3f2fd',color:'#1565c0',icon:'▶',label:'Ativação'},
+    pausa:      {bg:'#eceff1',color:'#546e7a',icon:'⏸',label:'Pausa'},
+    recuperacao:{bg:'#f3e5f5',color:'#6a1b9a',icon:'🎯',label:'Recuperação'},
+    cadastro:   {bg:'#e8f5e9',color:'#1b5e20',icon:'➕',label:'Cadastro'},
+    exclusao:   {bg:'#fce4ec',color:'#c62828',icon:'🗑',label:'Exclusão'},
+  };
+  document.getElementById('ch-content').innerHTML = '<div class="history-timeline">' +
+    clientLogs.map(l => {
+      const t = cfg[l.type] || {bg:'#f5f6fa',color:'#636e72',icon:'📌',label:l.type};
+      const dt = new Date(l.ts);
+      const dateStr = dt.toLocaleDateString('pt-BR')+' '+dt.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+      return `<div class="history-item">
+        <div class="history-icon" style="background:${t.bg};color:${t.color}">${t.icon}</div>
+        <div class="history-meta">
+          <div class="history-date">${dateStr}</div>
+          <div class="history-detail">${l.detail||'—'}</div>
+        </div>
+        <span class="badge-log-${l.type}" style="align-self:flex-start;white-space:nowrap">${t.label}</span>
+      </div>`;
+    }).join('') +
+  '</div>';
 }
 
 document.getElementById('f-date').min=new Date().toISOString().split('T')[0];
