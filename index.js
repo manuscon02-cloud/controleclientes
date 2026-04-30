@@ -16,7 +16,7 @@ const DASHBOARD_PASSWORD = process.env.DASHBOARD_PASSWORD || 'admin123';
 const AUTH_PATH = process.env.AUTH_DATA_PATH || '/app/data/.wwebjs_auth';
 const DATA_DIR = '/app/data';
 
-app.use(express.json());
+app.use(express.json({ limit: '15mb' }));
 
 // ─── Importação automática de dados ──────────────────────────────────────────
 function importDataIfNeeded() {
@@ -308,31 +308,43 @@ app.post('/api/migrate/fix-credits', (req, res) => {
 
 // ─── Disparo de Recuperação ───────────────────────────────────────────────────
 app.post('/api/blast', async (req, res) => {
-  const { clientIds, message, imageBase64, imageMime } = req.body;
-  if (!clientIds || !clientIds.length || !message)
-    return res.status(400).json({ error: 'Selecione clientes e escreva uma mensagem.' });
-  const results = { sent: [], failed: [] };
-  for (const id of clientIds) {
-    const c = db.getById(id);
-    if (!c || !c.phone) { results.failed.push({ name: c ? c.name : id, reason: 'Sem WhatsApp' }); continue; }
-    const key = c.sender || 'work';
-    if (!clients[key] || !clients[key].ready) { results.failed.push({ name: c.name, reason: 'WhatsApp não conectado' }); continue; }
-    const phone = c.phone + '@c.us';
-    const msg = message.replace(/\[nome\]/gi, c.name);
-    try {
-      if (imageBase64) {
-        const { MessageMedia } = require('whatsapp-web.js');
-        const media = new MessageMedia(imageMime || 'image/jpeg', imageBase64, 'banner.jpg');
-        await clients[key].instance.sendMessage(phone, media, { caption: msg });
-      } else {
-        await clients[key].instance.sendMessage(phone, msg);
-      }
-      results.sent.push({ name: c.name });
-      db.addLog('recuperacao', c.name, 'Mensagem de recuperação enviada');
-      await new Promise(r => setTimeout(r, 2000));
-    } catch(err) { results.failed.push({ name: c.name, reason: err.message }); }
+  try {
+    const { clientIds, message, imageBase64, imageMime } = req.body;
+    if (!clientIds || !clientIds.length || !message)
+      return res.status(400).json({ error: 'Selecione clientes e escreva uma mensagem.' });
+    const results = { sent: [], failed: [] };
+    for (const id of clientIds) {
+      const c = db.getById(id);
+      if (!c || !c.phone) { results.failed.push({ name: c ? c.name : id, reason: 'Sem WhatsApp' }); continue; }
+      const key = c.sender || 'work';
+      if (!clients[key] || !clients[key].ready) { results.failed.push({ name: c.name, reason: 'WhatsApp não conectado' }); continue; }
+      const phone = c.phone + '@c.us';
+      const msg = message.replace(/\[nome\]/gi, c.name);
+      try {
+        if (imageBase64) {
+          const { MessageMedia } = require('whatsapp-web.js');
+          const media = new MessageMedia(imageMime || 'image/jpeg', imageBase64, 'banner.jpg');
+          await clients[key].instance.sendMessage(phone, media, { caption: msg });
+        } else {
+          await clients[key].instance.sendMessage(phone, msg);
+        }
+        results.sent.push({ name: c.name });
+        db.addLog('recuperacao', c.name, 'Mensagem de recuperação enviada');
+        await new Promise(r => setTimeout(r, 2000));
+      } catch(err) { results.failed.push({ name: c.name, reason: err.message }); }
+    }
+    res.json(results);
+  } catch(err) {
+    console.error('Erro em /api/blast:', err.message);
+    res.status(500).json({ error: 'Erro interno: ' + err.message });
   }
-  res.json(results);
+});
+
+// ─── Error handler global (garante JSON em vez de HTML nos erros) ────────────
+app.use((err, req, res, next) => {
+  console.error('Erro na API:', err.message);
+  const status = err.status || err.statusCode || 500;
+  res.status(status).json({ error: err.message || 'Erro interno do servidor.' });
 });
 
 // ─── Start ────────────────────────────────────────────────────────────────────
