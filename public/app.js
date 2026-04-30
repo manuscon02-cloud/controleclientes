@@ -68,6 +68,8 @@ function renderQR() {
 
 let allClients=[],allServers=[];
 let currentPage=1;
+let finPage=1, cpPage=1, cpDays=7, recPage=1, histPage=1, extratoPage=1;
+let selectedOverdueIds=new Set();
 async function loadAll(){ await Promise.all([loadClients(),loadServers()]); checkStatus(); }
 
 async function loadClients() {
@@ -203,28 +205,22 @@ function renderClients() {
   renderPagination(totalPages, filtered.length, perPage);
 }
 
-function renderPagination(totalPages, total, perPage) {
-  const el = document.getElementById('clients-pagination');
-  if (!el) return;
-  if (totalPages <= 1) { el.innerHTML = ''; return; }
-
-  const prev = `<button class="page-btn" ${currentPage===1?'disabled':''} onclick="goToPage(${currentPage-1})">‹ Anterior</button>`;
-  const next = `<button class="page-btn" ${currentPage===totalPages?'disabled':''} onclick="goToPage(${currentPage+1})">Próximo ›</button>`;
-
-  let pages = '';
-  const delta = 2;
-  const left  = currentPage - delta;
-  const right = currentPage + delta;
-
-  for (let i = 1; i <= totalPages; i++) {
-    if (i === 1 || i === totalPages || (i >= left && i <= right)) {
-      pages += `<button class="page-btn${i===currentPage?' active':''}" onclick="goToPage(${i})">${i}</button>`;
-    } else if (i === left - 1 || i === right + 1) {
-      pages += `<span class="page-ellipsis">…</span>`;
-    }
+function buildPagination(containerId, totalPages, curPage, gotoFn) {
+  const el=document.getElementById(containerId); if(!el) return;
+  if(totalPages<=1){el.innerHTML='';return;}
+  const prev=`<button class="page-btn" ${curPage===1?'disabled':''} onclick="${gotoFn}(${curPage-1})">‹ Anterior</button>`;
+  const next=`<button class="page-btn" ${curPage===totalPages?'disabled':''} onclick="${gotoFn}(${curPage+1})">Próximo ›</button>`;
+  const delta=2,left=curPage-delta,right=curPage+delta;
+  let pages='';
+  for(let i=1;i<=totalPages;i++){
+    if(i===1||i===totalPages||(i>=left&&i<=right)) pages+=`<button class="page-btn${i===curPage?' active':''}" onclick="${gotoFn}(${i})">${i}</button>`;
+    else if(i===left-1||i===right+1) pages+=`<span class="page-ellipsis">…</span>`;
   }
+  el.innerHTML=prev+pages+next;
+}
 
-  el.innerHTML = prev + pages + next;
+function renderPagination(totalPages, total, perPage) {
+  buildPagination('clients-pagination', totalPages, currentPage, 'goToPage');
 }
 
 function goToPage(page) {
@@ -243,19 +239,19 @@ function resetFilters() {
 
 function populateServerSelects() {
   ['f-server','edit-server'].forEach(id => {
-    const sel = document.getElementById(id); if (!sel) return;
-    const cur = sel.value;
-    sel.innerHTML = '<option value="">Servidor (opcional)</option>';
-    allServers.forEach(s => { const o = document.createElement('option'); o.value = s.id; o.textContent = s.name; sel.appendChild(o); });
-    sel.value = cur;
+    const sel=document.getElementById(id); if(!sel) return;
+    const cur=sel.value;
+    sel.innerHTML='<option value="">Servidor (opcional)</option>';
+    allServers.forEach(s=>{const o=document.createElement('option');o.value=s.id;o.textContent=s.name;sel.appendChild(o);});
+    sel.value=cur;
   });
-  const fSv = document.getElementById('filter-server');
-  if (fSv) {
-    const cur = fSv.value;
-    fSv.innerHTML = '<option value="">Todos os servidores</option><option value="__none__">Sem servidor</option>';
-    allServers.forEach(s => { const o = document.createElement('option'); o.value = s.id; o.textContent = s.name; fSv.appendChild(o); });
-    fSv.value = cur;
-  }
+  ['filter-server','fin-filter-server'].forEach(id => {
+    const sel=document.getElementById(id); if(!sel) return;
+    const cur=sel.value;
+    sel.innerHTML='<option value="">Todos os servidores</option><option value="__none__">Sem servidor</option>';
+    allServers.forEach(s=>{const o=document.createElement('option');o.value=s.id;o.textContent=s.name;sel.appendChild(o);});
+    sel.value=cur;
+  });
 }
 
 function openEdit(id) {
@@ -378,29 +374,59 @@ async function deleteServer(id,name) {
   toast('🗑 Servidor excluído.',''); loadServers();
 }
 
+function finFilterChanged(){finPage=1;renderFinanceiro();}
+function finGoTo(p){finPage=p;renderFinanceiro();document.getElementById('tab-financeiro').scrollIntoView({behavior:'smooth',block:'start'});}
+
 function renderFinanceiro() {
   const todayStr=new Date().toISOString().split('T')[0];
-  const active=allClients.filter(c=>c.status==='active'&&c.dueDate>=todayStr);
+  const q=(document.getElementById('fin-search')?.value||'').toLowerCase();
+  const fSvc=document.getElementById('fin-filter-service')?.value||'';
+  const fSvr=document.getElementById('fin-filter-server')?.value||'';
+  const perPage=parseInt(document.getElementById('fin-per-page')?.value||'25');
+
+  const allActive=allClients.filter(c=>c.status==='active'&&c.dueDate>=todayStr);
   let totalRevenue=0,totalCost=0;
-  const clientRows=active.map(c=>{
+  allActive.forEach(c=>{
+    const sv=allServers.find(s=>s.id===c.serverId);
+    totalRevenue+=monthlyValue(c);
+    totalCost+=sv?sv.costPerCredit*(c.credits||1):0;
+  });
+
+  const filtered=allActive.filter(c=>{
+    if(q&&!c.name.toLowerCase().includes(q)) return false;
+    if(fSvc&&c.serviceType!==fSvc) return false;
+    if(fSvr==='__none__'&&c.serverId) return false;
+    if(fSvr&&fSvr!=='__none__'&&c.serverId!==fSvr) return false;
+    return true;
+  }).map(c=>{
     const sv=allServers.find(s=>s.id===c.serverId);
     const revenue=monthlyValue(c);
     const cost=sv?sv.costPerCredit*(c.credits||1):0;
-    const profit=revenue-cost;
-    totalRevenue+=revenue; totalCost+=cost;
-    return`<tr>
-      <td><strong>${c.name}</strong></td>
-      <td>${sv?sv.name:'—'}</td>
-      <td style="text-align:center">${c.credits||1}</td>
-      <td>${c.plan||'—'}</td>
-      <td>${fmtMoney(c.price)}<br><span style="font-size:.75rem;color:#636e72">${fmtMoney(revenue)}/mês</span></td>
-      <td style="color:var(--red)">${fmtMoney(cost)}</td>
-      <td style="color:${profit>=0?'#2e7d32':'#c62828'};font-weight:700">${fmtMoney(profit)}</td>
-    </tr>`;
-  }).join('');
-  document.getElementById('fin-clients-tbody').innerHTML=clientRows||'<tr class="empty-row"><td colspan="7">Nenhum cliente ativo</td></tr>';
+    return{c,sv,revenue,cost,profit:revenue-cost};
+  }).sort((a,b)=>b.profit-a.profit);
+
+  const totalPages=Math.max(1,Math.ceil(filtered.length/perPage));
+  if(finPage>totalPages) finPage=totalPages;
+  const start=(finPage-1)*perPage;
+  const pageItems=filtered.slice(start,start+perPage);
+
+  const countEl=document.getElementById('fin-count');
+  if(countEl) countEl.textContent=filtered.length?`${start+1}–${Math.min(start+perPage,filtered.length)} de ${filtered.length}`:`0 de ${allActive.length}`;
+
+  document.getElementById('fin-clients-tbody').innerHTML=pageItems.map(({c,sv,revenue,cost,profit})=>`<tr>
+    <td><strong>${c.name}</strong></td>
+    <td>${sv?sv.name:'—'}</td>
+    <td style="text-align:center">${c.credits||1}</td>
+    <td>${c.plan||'—'}</td>
+    <td>${fmtMoney(c.price)}<br><span style="font-size:.75rem;color:#636e72">${fmtMoney(revenue)}/mês</span></td>
+    <td style="color:var(--red)">${fmtMoney(cost)}</td>
+    <td style="color:${profit>=0?'#2e7d32':'#c62828'};font-weight:700">${fmtMoney(profit)}</td>
+  </tr>`).join('')||'<tr class="empty-row"><td colspan="7">Nenhum cliente encontrado</td></tr>';
+
+  buildPagination('fin-pagination',totalPages,finPage,'finGoTo');
+
   const byServer={};
-  active.forEach(c=>{
+  allActive.forEach(c=>{
     const sv=allServers.find(s=>s.id===c.serverId);
     const key=sv?sv.id:'__none__';
     if(!byServer[key]) byServer[key]={name:sv?sv.name:'Sem servidor',revenue:0,cost:0,count:0};
@@ -414,13 +440,14 @@ function renderFinanceiro() {
     <td style="color:var(--red)">${fmtMoney(s.cost)}</td>
     <td style="color:${(s.revenue-s.cost)>=0?'#2e7d32':'#c62828'};font-weight:700">${fmtMoney(s.revenue-s.cost)}</td>
   </tr>`).join('')||'<tr class="empty-row"><td colspan="5">Nenhum dado</td></tr>';
-  const cashflow=active.reduce((s,c)=>s+(c.price||0),0);
+
+  const cashflow=allActive.reduce((s,c)=>s+(c.price||0),0);
   document.getElementById('fin-cashflow').textContent=fmtMoney(cashflow);
   document.getElementById('fin-revenue').textContent=fmtMoney(totalRevenue);
   document.getElementById('fin-cost').value=totalCost;
   document.getElementById('fin-profit').textContent=fmtMoney(totalRevenue-totalCost);
-  document.getElementById('fin-clients').value=active.length;
-  document.getElementById('fin-clients-sub').textContent=active.length+' clientes ativos';
+  document.getElementById('fin-clients').value=allActive.length;
+  document.getElementById('fin-clients-sub').textContent=allActive.length+' clientes ativos';
   document.getElementById('fin-cost-sub').textContent='seu custo: '+fmtMoney(totalCost)+'/mês';
 }
 
@@ -431,9 +458,15 @@ function toast(msg,type=''){
   clearTimeout(tt); tt=setTimeout(()=>el.className='',4000);
 }
 
+function cpFilterChanged(){cpPage=1;renderCompras();}
+function cpGoTo(p){cpPage=p;renderCompras();document.getElementById('tab-compras').scrollIntoView({behavior:'smooth',block:'start'});}
+
 function renderCompras(days) {
-  days=days||7;
+  if(days) cpDays=days;
+  days=cpDays;
   document.getElementById('cp-periodo').textContent='Mostrando: próximos '+days+' dias';
+  const q=(document.getElementById('cp-search')?.value||'').toLowerCase();
+  const perPage=parseInt(document.getElementById('cp-per-page')?.value||'25');
   const today=new Date(); today.setHours(0,0,0,0);
   const limit=new Date(today); limit.setDate(limit.getDate()+days);
   const expiring=allClients.filter(c=>{if(c.status!=='active') return false; const d=new Date(c.dueDate+'T12:00:00'); d.setHours(0,0,0,0); return d>=today&&d<=limit;});
@@ -456,13 +489,20 @@ function renderCompras(days) {
   const tbody=document.getElementById('cp-tbody');
   const rows=Object.values(bySv);
   tbody.innerHTML=rows.length?rows.map(s=>'<tr><td><strong>'+s.name+'</strong></td><td>'+s.count+'</td><td><span style="background:#fce4ec;color:#c62828;font-weight:800;padding:4px 12px;border-radius:20px">'+s.credits+' créditos</span></td><td style="color:var(--red);font-weight:700">'+fmtMoney(s.cost)+'</td><td style="color:#2e7d32;font-weight:700">'+fmtMoney(s.revenue)+'</td><td style="color:var(--purple);font-weight:700">'+fmtMoney(s.revenue-s.cost)+'</td></tr>').join(''):'<tr class="empty-row"><td colspan="6">Nenhum cliente vence neste período</td></tr>';
+  const sorted=expiring.sort((a,b)=>a.dueDate.localeCompare(b.dueDate));
+  const filteredCp=q?sorted.filter(c=>c.name.toLowerCase().includes(q)):sorted;
+  const totalPages=Math.max(1,Math.ceil(filteredCp.length/perPage));
+  if(cpPage>totalPages) cpPage=totalPages;
+  const start=(cpPage-1)*perPage;
+  const pageItems=filteredCp.slice(start,start+perPage);
   const ctbody=document.getElementById('cp-clients-tbody');
-  ctbody.innerHTML=expiring.length?expiring.sort((a,b)=>a.dueDate.localeCompare(b.dueDate)).map(c=>{
+  ctbody.innerHTML=pageItems.map(c=>{
     const sv=allServers.find(s=>s.id===c.serverId);
     const dl=getDaysLeft(c.dueDate);
     const urg=dl<=3?'color:var(--red);font-weight:700':dl<=7?'color:var(--orange);font-weight:700':'';
     return'<tr><td><strong>'+c.name+'</strong></td><td style="'+urg+'">'+fmtDate(c.dueDate)+' ('+(dl===0?'hoje':dl+'d')+')</td><td>'+(c.plan||'—')+'</td><td>'+(sv?'<span class="badge badge-server">'+sv.name+'</span>':'—')+'</td><td style="text-align:center">'+(c.credits||1)+'</td><td>'+fmtMoney(c.price)+'</td></tr>';
-  }).join(''):'<tr class="empty-row"><td colspan="6">Nenhum cliente</td></tr>';
+  }).join('')||'<tr class="empty-row"><td colspan="6">Nenhum cliente</td></tr>';
+  buildPagination('cp-pagination',totalPages,cpPage,'cpGoTo');
 }
 
 let bannerBase64=null,bannerMime=null;
@@ -489,30 +529,50 @@ function clearBanner() {
   document.getElementById('banner-input').value='';
 }
 
+function recFilterChanged(){recPage=1;renderRecuperacao();}
+function recGoTo(p){recPage=p;renderRecuperacao();document.getElementById('tab-recuperacao').scrollIntoView({behavior:'smooth',block:'start'});}
+
 function renderRecuperacao() {
+  const q=(document.getElementById('rec-search')?.value||'').toLowerCase();
+  const perPage=parseInt(document.getElementById('rec-per-page')?.value||'25');
   const today=new Date(); today.setHours(0,0,0,0);
   const overdue=allClients.filter(c=>c.status==='active'&&new Date(c.dueDate+'T12:00:00')<today);
   const withPhone=overdue.filter(c=>c.phone);
   document.getElementById('rec-total').textContent=overdue.length;
   document.getElementById('rec-revenue').textContent=fmtMoney(overdue.reduce((s,c)=>s+(c.price||0),0));
   document.getElementById('rec-withphone').textContent=withPhone.length;
+  const filtered=q?overdue.filter(c=>c.name.toLowerCase().includes(q)):overdue;
+  const sorted=filtered.sort((a,b)=>a.dueDate.localeCompare(b.dueDate));
+  const totalPages=Math.max(1,Math.ceil(sorted.length/perPage));
+  if(recPage>totalPages) recPage=totalPages;
+  const start=(recPage-1)*perPage;
+  const pageItems=sorted.slice(start,start+perPage);
   const tbody=document.getElementById('rec-tbody');
-  if(!overdue.length){tbody.innerHTML='<tr class="empty-row"><td colspan="7">Nenhum cliente vencido 🎉</td></tr>';return;}
-  tbody.innerHTML=overdue.sort((a,b)=>a.dueDate.localeCompare(b.dueDate)).map(c=>{
+  if(!filtered.length){tbody.innerHTML='<tr class="empty-row"><td colspan="7">Nenhum cliente vencido 🎉</td></tr>';buildPagination('rec-pagination',0,1,'recGoTo');updateSelectedCount();return;}
+  tbody.innerHTML=pageItems.map(c=>{
     const days=Math.abs(getDaysLeft(c.dueDate));
     const hasPhone=!!c.phone;
-    return'<tr><td class="checkbox-col"><input type="checkbox" class="rec-check" value="'+c.id+'" '+(hasPhone?'':'disabled title="Sem WhatsApp"')+' onchange="updateSelectedCount()" /></td><td><strong>'+c.name+'</strong></td><td><span class="badge-overdue-days">há '+days+' dia'+(days>1?'s':'')+'</span></td><td>'+(c.plan||'—')+'</td><td>'+fmtMoney(c.price)+'</td><td>'+(hasPhone?'✅ '+fmtPhone(c.phone):'<span style="color:#b2bec3">Sem número</span>')+'</td><td>'+senderBadge(c.sender)+'</td></tr>';
+    const checked=selectedOverdueIds.has(c.id)?' checked':'';
+    return'<tr><td class="checkbox-col"><input type="checkbox" class="rec-check" value="'+c.id+'" '+(hasPhone?'':'disabled title="Sem WhatsApp"')+checked+' onchange="toggleOverdueSelect(this)" /></td><td><strong>'+c.name+'</strong></td><td><span class="badge-overdue-days">há '+days+' dia'+(days>1?'s':'')+'</span></td><td>'+(c.plan||'—')+'</td><td>'+fmtMoney(c.price)+'</td><td>'+(hasPhone?'✅ '+fmtPhone(c.phone):'<span style="color:#b2bec3">Sem número</span>')+'</td><td>'+senderBadge(c.sender)+'</td></tr>';
   }).join('');
+  buildPagination('rec-pagination',totalPages,recPage,'recGoTo');
   updateSelectedCount();
 }
-function updateSelectedCount(){ document.getElementById('rec-selected').textContent=document.querySelectorAll('.rec-check:checked').length; }
-function selectAllOverdue(){ document.querySelectorAll('.rec-check:not(:disabled)').forEach(cb=>cb.checked=true); updateSelectedCount(); }
-function deselectAll(){ document.querySelectorAll('.rec-check').forEach(cb=>cb.checked=false); updateSelectedCount(); }
+function toggleOverdueSelect(cb){if(cb.checked)selectedOverdueIds.add(cb.value);else selectedOverdueIds.delete(cb.value);updateSelectedCount();}
+function updateSelectedCount(){document.getElementById('rec-selected').textContent=selectedOverdueIds.size;}
+function selectAllOverdue(){
+  const q=(document.getElementById('rec-search')?.value||'').toLowerCase();
+  const today=new Date();today.setHours(0,0,0,0);
+  allClients.filter(c=>c.status==='active'&&new Date(c.dueDate+'T12:00:00')<today&&c.phone&&(!q||c.name.toLowerCase().includes(q)))
+    .forEach(c=>selectedOverdueIds.add(c.id));
+  renderRecuperacao();
+}
+function deselectAll(){selectedOverdueIds.clear();renderRecuperacao();}
 
 async function fireBlast() {
   const msg=document.getElementById('blast-msg').value.trim();
   if(!msg) return toast('Escreva uma mensagem!','error');
-  const checked=[...document.querySelectorAll('.rec-check:checked')].map(cb=>cb.value);
+  const checked=[...selectedOverdueIds];
   if(!checked.length) return toast('Selecione pelo menos um cliente!','error');
   if(!confirm('Disparar para '+checked.length+' cliente(s)?')) return;
   const btn=document.getElementById('blast-btn');
@@ -536,18 +596,29 @@ let allLogs=[];
 async function loadHistorico() {
   const res=await fetch('/api/logs',{headers:apiH()}); allLogs=await res.json(); renderHistorico();
 }
+function histFilterChanged(){histPage=1;renderHistorico();}
+function histGoTo(p){histPage=p;renderHistorico();document.getElementById('tab-historico').scrollIntoView({behavior:'smooth',block:'start'});}
+
 function renderHistorico() {
   const filter=document.getElementById('log-filter').value;
-  const filtered=filter?allLogs.filter(l=>l.type===filter):allLogs;
+  const q=(document.getElementById('hist-search')?.value||'').toLowerCase();
+  const perPage=parseInt(document.getElementById('hist-per-page')?.value||'50');
+  const filtered=(filter?allLogs.filter(l=>l.type===filter):allLogs)
+    .filter(l=>!q||l.clientName.toLowerCase().includes(q)||(l.detail||'').toLowerCase().includes(q));
+  const totalPages=Math.max(1,Math.ceil(filtered.length/perPage));
+  if(histPage>totalPages) histPage=totalPages;
+  const start=(histPage-1)*perPage;
+  const pageItems=filtered.slice(start,start+perPage);
   const tbody=document.getElementById('historico-tbody');
-  if(!filtered.length){tbody.innerHTML='<tr class="empty-row"><td colspan="4">Nenhuma atividade registrada</td></tr>';return;}
+  if(!filtered.length){tbody.innerHTML='<tr class="empty-row"><td colspan="4">Nenhuma atividade registrada</td></tr>';buildPagination('hist-pagination',0,1,'histGoTo');return;}
   const icons={cobranca:'📨',renovacao:'🔄',ativacao:'▶',pausa:'⏸',recuperacao:'🎯',cadastro:'➕',exclusao:'🗑'};
   const labels={cobranca:'Cobrança',renovacao:'Renovação',ativacao:'Ativação',pausa:'Pausa',recuperacao:'Recuperação',cadastro:'Cadastro',exclusao:'Exclusão'};
-  tbody.innerHTML=filtered.map(l=>{
+  tbody.innerHTML=pageItems.map(l=>{
     const d=new Date(l.createdAt);
     const dateStr=d.toLocaleDateString('pt-BR')+' '+d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
     return'<tr class="log-row"><td style="color:#636e72;white-space:nowrap">'+dateStr+'</td><td><span class="badge-log-'+l.type+'">'+(icons[l.type]||'•')+' '+(labels[l.type]||l.type)+'</span></td><td><strong>'+l.clientName+'</strong></td><td style="color:#636e72">'+(l.detail||'')+'</td></tr>';
   }).join('');
+  buildPagination('hist-pagination',totalPages,histPage,'histGoTo');
 }
 
 async function sendManualBackup() {
@@ -694,11 +765,24 @@ async function loadRelatorios() {
   renderExtrato();
 }
 
+function extratoFilterChanged(){extratoPage=1;renderExtrato();}
+function extratoGoTo(p){extratoPage=p;renderExtrato();document.getElementById('tab-relatorios').scrollIntoView({behavior:'smooth',block:'start'});}
+
 function renderExtrato() {
   const filterService=document.getElementById('rel-filter-service').value;
   const filterBank=document.getElementById('rel-filter-bank').value;
-  const filtered=relPayments.filter(p=>(!filterService||p.serviceType===filterService)&&(!filterBank||p.bank===filterBank)).sort((a,b)=>b.paidAt.localeCompare(a.paidAt));
-  document.getElementById('rel-extrato-tbody').innerHTML=filtered.map(p=>`
+  const q=(document.getElementById('extrato-search')?.value||'').toLowerCase();
+  const perPage=parseInt(document.getElementById('extrato-per-page')?.value||'25');
+  const filtered=relPayments.filter(p=>
+    (!filterService||p.serviceType===filterService)&&
+    (!filterBank||p.bank===filterBank)&&
+    (!q||p.clientName.toLowerCase().includes(q))
+  ).sort((a,b)=>b.paidAt.localeCompare(a.paidAt));
+  const totalPages=Math.max(1,Math.ceil(filtered.length/perPage));
+  if(extratoPage>totalPages) extratoPage=totalPages;
+  const start=(extratoPage-1)*perPage;
+  const pageItems=filtered.slice(start,start+perPage);
+  document.getElementById('rel-extrato-tbody').innerHTML=pageItems.map(p=>`
     <tr>
       <td>${fmtDate(p.paidAt)}</td>
       <td><strong>${p.clientName}</strong></td>
@@ -712,6 +796,7 @@ function renderExtrato() {
       </div></td>
     </tr>
   `).join('')||'<tr class="empty-row"><td colspan="7">Nenhum pagamento no período</td></tr>';
+  buildPagination('extrato-pagination',totalPages,extratoPage,'extratoGoTo');
 }
 
 document.getElementById('f-date').min=new Date().toISOString().split('T')[0];

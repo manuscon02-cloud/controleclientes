@@ -298,13 +298,34 @@
     <input type="hidden" id="fin-cost" value="0">
     <input type="hidden" id="fin-clients" value="0">
     <div class="section-card" style="padding:0">
-      <div class="table-header"><h2>💰 Lucro por Cliente</h2></div>
+      <div class="table-header">
+        <h2>💰 Lucro por Cliente</h2>
+        <input class="search-box" type="text" id="fin-search" placeholder="🔍 Buscar cliente..." oninput="finFilterChanged()" />
+      </div>
+      <div class="filter-bar">
+        <select id="fin-filter-service" onchange="finFilterChanged()">
+          <option value="">Todos os serviços</option>
+          <option value="iptv">📺 IPTV</option>
+          <option value="cs">📡 CS</option>
+        </select>
+        <select id="fin-filter-server" onchange="finFilterChanged()">
+          <option value="">Todos os servidores</option>
+          <option value="__none__">Sem servidor</option>
+        </select>
+        <select id="fin-per-page" onchange="finFilterChanged()" style="border:1px solid var(--border);border-radius:8px;padding:7px 10px;font-size:.82rem;outline:none;background:#fff;cursor:pointer">
+          <option value="10">10 por página</option>
+          <option value="25" selected>25 por página</option>
+          <option value="50">50 por página</option>
+        </select>
+        <span class="filter-count" id="fin-count"></span>
+      </div>
       <div class="table-wrap">
         <table>
           <thead><tr><th>Cliente</th><th>Servidor</th><th>Créditos</th><th>Plano</th><th>Valor/MRR</th><th>Custo/mês</th><th>Lucro/mês</th></tr></thead>
           <tbody id="fin-clients-tbody"></tbody>
         </table>
       </div>
+      <div class="pagination" id="fin-pagination"></div>
     </div>
     <div class="section-card" style="padding:0;margin-top:16px">
       <div class="table-header"><h2>🖥️ Lucro por Servidor</h2></div>
@@ -343,13 +364,24 @@
       </div>
     </div>
     <div class="section-card" style="padding:0">
-      <div class="table-header"><h2>📋 Clientes que vencem no período</h2></div>
+      <div class="table-header">
+        <h2>📋 Clientes que vencem no período</h2>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <input class="search-box" type="text" id="cp-search" placeholder="🔍 Buscar..." oninput="cpFilterChanged()" />
+          <select id="cp-per-page" onchange="cpFilterChanged()" style="border:1px solid var(--border);border-radius:8px;padding:7px 10px;font-size:.82rem;outline:none;background:#fff;cursor:pointer">
+            <option value="10">10 por página</option>
+            <option value="25" selected>25 por página</option>
+            <option value="50">50 por página</option>
+          </select>
+        </div>
+      </div>
       <div class="table-wrap">
         <table>
           <thead><tr><th>Cliente</th><th>Vencimento</th><th>Plano</th><th>Servidor</th><th>Créditos</th><th>Valor</th></tr></thead>
           <tbody id="cp-clients-tbody"></tbody>
         </table>
       </div>
+      <div class="pagination" id="cp-pagination"></div>
     </div>
   </div>
 
@@ -383,6 +415,12 @@
       <div class="table-header">
         <h2>⚠️ Clientes Vencidos</h2>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <input class="search-box" type="text" id="rec-search" placeholder="🔍 Buscar..." oninput="recFilterChanged()" style="width:150px" />
+          <select id="rec-per-page" onchange="recFilterChanged()" style="border:1px solid var(--border);border-radius:8px;padding:7px 10px;font-size:.82rem;outline:none;background:#fff;cursor:pointer">
+            <option value="10">10 por página</option>
+            <option value="25" selected>25 por página</option>
+            <option value="50">50 por página</option>
+          </select>
           <button class="select-all-btn" onclick="selectAllOverdue()">☑️ Selecionar todos</button>
           <button class="select-all-btn" style="background:#fce4ec;color:#c62828" onclick="deselectAll()">✖ Limpar</button>
         </div>
@@ -393,6 +431,7 @@
           <tbody id="rec-tbody"></tbody>
         </table>
       </div>
+      <div class="pagination" id="rec-pagination"></div>
     </div>
     <div id="blast-result" style="display:none" class="section-card">
       <h2>📊 Resultado do Disparo</h2>
@@ -406,7 +445,8 @@
       <div class="table-header" style="flex-wrap:wrap;gap:10px">
         <h2>📋 Histórico de Atividades</h2>
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-          <select id="log-filter" onchange="renderHistorico()" style="border:1px solid var(--border);border-radius:8px;padding:7px 12px;font-size:.82rem;outline:none">
+          <input class="search-box" type="text" id="hist-search" placeholder="🔍 Buscar cliente..." oninput="histFilterChanged()" style="width:160px" />
+          <select id="log-filter" onchange="histFilterChanged()" style="border:1px solid var(--border);border-radius:8px;padding:7px 12px;font-size:.82rem;outline:none">
             <option value="">Todos</option>
             <option value="cobranca">📨 Cobranças</option>
             <option value="renovacao">🔄 Renovações</option>
@@ -415,6 +455,11 @@
             <option value="recuperacao">🎯 Recuperação</option>
             <option value="cadastro">➕ Cadastros</option>
             <option value="exclusao">🗑 Exclusões</option>
+          </select>
+          <select id="hist-per-page" onchange="histFilterChanged()" style="border:1px solid var(--border);border-radius:8px;padding:7px 10px;font-size:.82rem;outline:none;background:#fff;cursor:pointer">
+            <option value="25">25 por página</option>
+            <option value="50" selected>50 por página</option>
+            <option value="100">100 por página</option>
           </select>
           <button class="select-all-btn" onclick="loadHistorico()">🔄 Atualizar</button>
         </div>
@@ -425,6 +470,7 @@
           <tbody id="historico-tbody"></tbody>
         </table>
       </div>
+      <div class="pagination" id="hist-pagination"></div>
     </div>
   </div>
 
@@ -463,18 +509,24 @@
     <div class="section-card" style="padding:0">
       <div class="table-header">
         <h2>📋 Extrato de pagamentos</h2>
-        <div style="display:flex;gap:8px">
-          <select id="rel-filter-service" onchange="renderExtrato()" style="border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:.82rem;outline:none">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <input class="search-box" type="text" id="extrato-search" placeholder="🔍 Cliente..." oninput="extratoFilterChanged()" style="width:150px" />
+          <select id="rel-filter-service" onchange="extratoFilterChanged()" style="border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:.82rem;outline:none">
             <option value="">Todos</option>
             <option value="iptv">📺 IPTV</option>
             <option value="cs">📡 CS</option>
           </select>
-          <select id="rel-filter-bank" onchange="renderExtrato()" style="border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:.82rem;outline:none">
+          <select id="rel-filter-bank" onchange="extratoFilterChanged()" style="border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:.82rem;outline:none">
             <option value="">Todos os bancos</option>
             <option value="Nubank">Nubank</option>
             <option value="Bradesco">Bradesco</option>
             <option value="Caixa">Caixa</option>
             <option value="Dinheiro">Dinheiro</option>
+          </select>
+          <select id="extrato-per-page" onchange="extratoFilterChanged()" style="border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:.82rem;outline:none;background:#fff;cursor:pointer">
+            <option value="10">10 por página</option>
+            <option value="25" selected>25 por página</option>
+            <option value="50">50 por página</option>
           </select>
         </div>
       </div>
@@ -484,6 +536,7 @@
           <tbody id="rel-extrato-tbody"></tbody>
         </table>
       </div>
+      <div class="pagination" id="extrato-pagination"></div>
     </div>
     <div class="section-card" style="padding:0;margin-top:16px">
       <div class="table-header"><h2>⚠️ Inadimplência — receita parada</h2></div>
